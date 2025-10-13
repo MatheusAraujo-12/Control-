@@ -1,27 +1,97 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import {
+    db,
+    updateProfile,
+    reauthenticateWithCredential,
+    EmailAuthProvider,
+    updatePassword,
+} from '../firebase';
 import { Button } from './ui/Button';
-import { Image as ImageIcon, UploadCloud, Trash2, Save } from 'lucide-react';
+import { Input } from './ui/Input';
+import {
+    Image as ImageIcon,
+    UploadCloud,
+    Trash2,
+    Save,
+    Building2,
+    User,
+    Phone,
+    IdCard,
+    Calendar,
+    Mail,
+    ShieldCheck,
+    Lock,
+} from 'lucide-react';
 
 const MAX_FILE_SIZE = 1024 * 1024 * 2; // 2MB
 
-const Configuracoes = ({ appSettings = {}, setNotification }) => {
+const defaultCompanyData = {
+    companyName: '',
+    companyEmail: '',
+    companyPhone: '',
+    companyDocument: '',
+    companyAddress: '',
+    companyWebsite: '',
+};
+
+const defaultPersonalData = {
+    fullName: '',
+    email: '',
+    birthDate: '',
+    cpfCnpj: '',
+    phone: '',
+};
+
+const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userProfile }) => {
     const fileInputRef = useRef(null);
     const [logoPreview, setLogoPreview] = useState(appSettings.logoUrl || '');
     const [logoFile, setLogoFile] = useState(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const [isRemoving, setIsRemoving] = useState(false);
+    const [isSavingLogo, setIsSavingLogo] = useState(false);
+    const [isRemovingLogo, setIsRemovingLogo] = useState(false);
+    const [isSavingCompany, setIsSavingCompany] = useState(false);
+    const [isSavingPersonal, setIsSavingPersonal] = useState(false);
+    const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+    const [companyData, setCompanyData] = useState(defaultCompanyData);
+    const [personalData, setPersonalData] = useState(defaultPersonalData);
+    const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
+    useEffect(() => {
+        setCompanyData(prev => ({
+            ...prev,
+            companyName: appSettings.companyName || '',
+            companyEmail: appSettings.companyEmail || '',
+            companyPhone: appSettings.companyPhone || '',
+            companyDocument: appSettings.companyDocument || '',
+            companyAddress: appSettings.companyAddress || '',
+            companyWebsite: appSettings.companyWebsite || '',
+        }));
+    }, [appSettings.companyName, appSettings.companyEmail, appSettings.companyPhone, appSettings.companyDocument, appSettings.companyAddress, appSettings.companyWebsite]);
+
+    useEffect(() => {
+        if (!userProfile && !currentUser) {
+            setPersonalData(defaultPersonalData);
+            return;
+        }
+        setPersonalData({
+            fullName: userProfile?.fullName || currentUser?.displayName || '',
+            email: currentUser?.email || userProfile?.email || '',
+            birthDate: userProfile?.birthDate || '',
+            cpfCnpj: userProfile?.cpfCnpj || '',
+            phone: userProfile?.phone || '',
+        });
+    }, [userProfile, currentUser]);
 
     useEffect(() => {
         if (!logoFile) {
             setLogoPreview(appSettings.logoUrl || '');
         }
-    }, [appSettings, logoFile]);
+    }, [appSettings.logoUrl, logoFile]);
 
-    const handlePickFile = () => {
-        fileInputRef.current?.click();
-    };
+    const notify = (type, message) => setNotification?.({ type, message });
+
+    const handlePickFile = () => fileInputRef.current?.click();
 
     const handleFileChange = event => {
         const [file] = event.target.files || [];
@@ -30,12 +100,12 @@ const Configuracoes = ({ appSettings = {}, setNotification }) => {
         }
 
         if (!file.type.startsWith('image/')) {
-            setNotification?.({ type: 'error', message: 'Selecione um arquivo de imagem válido.' });
+            notify('error', 'Selecione um arquivo de imagem válido.');
             return;
         }
 
         if (file.size > MAX_FILE_SIZE) {
-            setNotification?.({ type: 'error', message: 'A imagem deve ter no máximo 2MB.' });
+            notify('error', 'A imagem deve ter no máximo 2MB.');
             return;
         }
 
@@ -45,27 +115,27 @@ const Configuracoes = ({ appSettings = {}, setNotification }) => {
             setLogoPreview(reader.result?.toString() || '');
         };
         reader.onerror = () => {
-            setNotification?.({ type: 'error', message: 'Não foi possível ler o arquivo selecionado.' });
+            notify('error', 'Não foi possível ler o arquivo selecionado.');
         };
         reader.readAsDataURL(file);
     };
 
     const handleSaveLogo = async () => {
         if (!logoPreview) {
-            setNotification?.({ type: 'error', message: 'Escolha uma imagem antes de salvar.' });
+            notify('error', 'Escolha uma imagem antes de salvar.');
             return;
         }
 
-        setIsSaving(true);
+        setIsSavingLogo(true);
         try {
             await setDoc(doc(db, 'settings', 'app'), { logoUrl: logoPreview }, { merge: true });
-            setNotification?.({ type: 'success', message: 'Logomarca atualizada com sucesso!' });
+            notify('success', 'Logomarca atualizada com sucesso!');
             setLogoFile(null);
         } catch (error) {
             console.error('Erro ao salvar logomarca:', error);
-            setNotification?.({ type: 'error', message: 'Não foi possível salvar a logomarca.' });
+            notify('error', 'Não foi possível salvar a logomarca.');
         } finally {
-            setIsSaving(false);
+            setIsSavingLogo(false);
         }
     };
 
@@ -73,33 +143,255 @@ const Configuracoes = ({ appSettings = {}, setNotification }) => {
         if (!logoPreview) {
             return;
         }
-        setIsRemoving(true);
+        setIsRemovingLogo(true);
         try {
             await setDoc(doc(db, 'settings', 'app'), { logoUrl: '' }, { merge: true });
-            setNotification?.({ type: 'success', message: 'Logomarca removida.' });
+            notify('success', 'Logomarca removida.');
             setLogoPreview('');
             setLogoFile(null);
         } catch (error) {
             console.error('Erro ao remover logomarca:', error);
-            setNotification?.({ type: 'error', message: 'Não foi possível remover a logomarca.' });
+            notify('error', 'Não foi possível remover a logomarca.');
         } finally {
-            setIsRemoving(false);
+            setIsRemovingLogo(false);
+        }
+    };
+
+    const handleCompanyChange = event => {
+        const { name, value } = event.target;
+        setCompanyData(current => ({ ...current, [name]: value }));
+    };
+
+    const handlePersonalChange = event => {
+        const { name, value } = event.target;
+        setPersonalData(current => ({ ...current, [name]: value }));
+    };
+
+    const handlePasswordsChange = event => {
+        const { name, value } = event.target;
+        setPasswords(current => ({ ...current, [name]: value }));
+    };
+
+    const handleSaveCompany = async event => {
+        event.preventDefault();
+        setIsSavingCompany(true);
+        try {
+            await setDoc(doc(db, 'settings', 'app'), companyData, { merge: true });
+            notify('success', 'Dados da empresa atualizados com sucesso!');
+        } catch (error) {
+            console.error('Erro ao atualizar dados da empresa:', error);
+            notify('error', 'Não foi possível salvar os dados da empresa.');
+        } finally {
+            setIsSavingCompany(false);
+        }
+    };
+
+    const handleSavePersonal = async event => {
+        event.preventDefault();
+        if (!currentUser) {
+            notify('error', 'Usuário não autenticado.');
+            return;
+        }
+        setIsSavingPersonal(true);
+        try {
+            await setDoc(
+                doc(db, 'users', currentUser.uid),
+                {
+                    fullName: personalData.fullName.trim(),
+                    birthDate: personalData.birthDate,
+                    cpfCnpj: personalData.cpfCnpj.trim(),
+                    phone: personalData.phone.trim(),
+                    email: personalData.email.trim().toLowerCase(),
+                    updatedAt: new Date().toISOString(),
+                },
+                { merge: true }
+            );
+
+            if (personalData.fullName && personalData.fullName !== currentUser.displayName) {
+                await updateProfile(currentUser, { displayName: personalData.fullName.trim() });
+            }
+
+            notify('success', 'Dados pessoais atualizados com sucesso!');
+        } catch (error) {
+            console.error('Erro ao atualizar dados pessoais:', error);
+            notify('error', 'Não foi possível salvar os dados pessoais.');
+        } finally {
+            setIsSavingPersonal(false);
+        }
+    };
+
+    const handleUpdatePassword = async event => {
+        event.preventDefault();
+        if (!currentUser?.email) {
+            notify('error', 'Usuário não autenticado.');
+            return;
+        }
+
+        if (!passwords.currentPassword || !passwords.newPassword || !passwords.confirmPassword) {
+            notify('error', 'Preencha todos os campos de senha.');
+            return;
+        }
+
+        if (passwords.newPassword.length < 6) {
+            notify('error', 'A nova senha deve ter pelo menos 6 caracteres.');
+            return;
+        }
+
+        if (passwords.newPassword !== passwords.confirmPassword) {
+            notify('error', 'As senhas informadas não coincidem.');
+            return;
+        }
+
+        setIsUpdatingPassword(true);
+        try {
+            const credential = EmailAuthProvider.credential(currentUser.email, passwords.currentPassword);
+            await reauthenticateWithCredential(currentUser, credential);
+            await updatePassword(currentUser, passwords.newPassword);
+            setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
+            notify('success', 'Senha atualizada com sucesso!');
+        } catch (error) {
+            console.error('Erro ao atualizar senha:', error);
+            const message =
+                error.code === 'auth/wrong-password'
+                    ? 'A senha atual informada está incorreta.'
+                    : 'Não foi possível atualizar a senha. Tente novamente.';
+            notify('error', message);
+        } finally {
+            setIsUpdatingPassword(false);
         }
     };
 
     return (
         <div className="space-y-8">
             <header>
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Configurações do aplicativo</h1>
-                <p className="text-gray-600 dark:text-gray-400">Personalize a identidade visual exibida no painel.</p>
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Configurações</h1>
+                <p className="text-gray-600 dark:text-gray-400">Gerencie a identidade visual e as informações da sua oficina.</p>
             </header>
 
-            <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Logomarca</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                    Recomendamos imagens quadradas (preferencialmente 256x256) nos formatos PNG ou SVG.
-                </p>
+            <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-6">
+                <div className="flex items-center space-x-3">
+                    <Building2 className="text-blue-500" size={24} />
+                    <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Dados da empresa</h2>
+                </div>
+                <form onSubmit={handleSaveCompany} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                            name="companyName"
+                            value={companyData.companyName}
+                            onChange={handleCompanyChange}
+                            placeholder="Nome fantasia"
+                            icon={<Building2 size={18} />}
+                            required
+                        />
+                        <Input
+                            name="companyDocument"
+                            value={companyData.companyDocument}
+                            onChange={handleCompanyChange}
+                            placeholder="CNPJ ou CPF"
+                            icon={<IdCard size={18} />}
+                        />
+                        <Input
+                            name="companyEmail"
+                            type="email"
+                            value={companyData.companyEmail}
+                            onChange={handleCompanyChange}
+                            placeholder="E-mail comercial"
+                            icon={<Mail size={18} />}
+                        />
+                        <Input
+                            name="companyPhone"
+                            value={companyData.companyPhone}
+                            onChange={handleCompanyChange}
+                            placeholder="Telefone comercial"
+                            icon={<Phone size={18} />}
+                        />
+                        <Input
+                            name="companyWebsite"
+                            value={companyData.companyWebsite}
+                            onChange={handleCompanyChange}
+                            placeholder="Site ou redes sociais"
+                            icon={<ShieldCheck size={18} />}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Endereço</label>
+                        <textarea
+                            name="companyAddress"
+                            value={companyData.companyAddress}
+                            onChange={handleCompanyChange}
+                            rows={3}
+                            className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Rua, número, bairro, cidade"
+                        />
+                    </div>
+                    <div className="flex justify-end">
+                        <Button type="submit" disabled={isSavingCompany} icon={<Save size={18} />}>
+                            {isSavingCompany ? 'Salvando...' : 'Salvar alterações'}
+                        </Button>
+                    </div>
+                </form>
+            </section>
 
+            <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-6">
+                <div className="flex items-center space-x-3">
+                    <User className="text-blue-500" size={24} />
+                    <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Dados pessoais</h2>
+                </div>
+                <form onSubmit={handleSavePersonal} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                            name="fullName"
+                            value={personalData.fullName}
+                            onChange={handlePersonalChange}
+                            placeholder="Nome completo"
+                            icon={<User size={18} />}
+                            required
+                        />
+                        <Input
+                            name="email"
+                            type="email"
+                            value={personalData.email}
+                            onChange={handlePersonalChange}
+                            placeholder="E-mail"
+                            icon={<Mail size={18} />}
+                            disabled
+                        />
+                        <Input
+                            name="birthDate"
+                            type="date"
+                            value={personalData.birthDate}
+                            onChange={handlePersonalChange}
+                            placeholder="Data de nascimento"
+                            icon={<Calendar size={18} />}
+                        />
+                        <Input
+                            name="cpfCnpj"
+                            value={personalData.cpfCnpj}
+                            onChange={handlePersonalChange}
+                            placeholder="CPF ou CNPJ"
+                            icon={<IdCard size={18} />}
+                        />
+                        <Input
+                            name="phone"
+                            value={personalData.phone}
+                            onChange={handlePersonalChange}
+                            placeholder="Telefone"
+                            icon={<Phone size={18} />}
+                        />
+                    </div>
+                    <div className="flex justify-end">
+                        <Button type="submit" disabled={isSavingPersonal} icon={<Save size={18} />}>
+                            {isSavingPersonal ? 'Salvando...' : 'Salvar dados pessoais'}
+                        </Button>
+                    </div>
+                </form>
+            </section>
+
+            <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-6">
+                <div className="flex items-center space-x-3">
+                    <ImageIcon className="text-blue-500" size={24} />
+                    <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Logomarca</h2>
+                </div>
                 <div className="flex flex-col md:flex-row gap-6 items-start">
                     <div className="w-40 h-40 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center bg-gray-50 dark:bg-gray-900/40 overflow-hidden">
                         {logoPreview ? (
@@ -127,19 +419,19 @@ const Configuracoes = ({ appSettings = {}, setNotification }) => {
                             <Button
                                 type="button"
                                 onClick={handleSaveLogo}
-                                disabled={isSaving || !logoPreview}
+                                disabled={isSavingLogo || !logoPreview}
                                 icon={<Save size={18} />}
                             >
-                                {isSaving ? 'Salvando...' : 'Salvar logomarca'}
+                                {isSavingLogo ? 'Salvando...' : 'Salvar logomarca'}
                             </Button>
                             <Button
                                 type="button"
                                 variant="danger"
                                 onClick={handleRemoveLogo}
-                                disabled={isRemoving || (!logoPreview && !logoFile)}
+                                disabled={isRemovingLogo || (!logoPreview && !logoFile)}
                                 icon={<Trash2 size={18} />}
                             >
-                                {isRemoving ? 'Removendo...' : 'Remover'}
+                                {isRemovingLogo ? 'Removendo...' : 'Remover'}
                             </Button>
                         </div>
                         <ul className="text-xs text-gray-500 dark:text-gray-400 list-disc list-inside space-y-1">
@@ -150,9 +442,51 @@ const Configuracoes = ({ appSettings = {}, setNotification }) => {
                     </div>
                 </div>
             </section>
+
+            <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-6">
+                <div className="flex items-center space-x-3">
+                    <ShieldCheck className="text-blue-500" size={24} />
+                    <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Segurança</h2>
+                </div>
+                <form onSubmit={handleUpdatePassword} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Input
+                            name="currentPassword"
+                            type="password"
+                            value={passwords.currentPassword}
+                            onChange={handlePasswordsChange}
+                            placeholder="Senha atual"
+                            icon={<Lock size={18} />}
+                            required
+                        />
+                        <Input
+                            name="newPassword"
+                            type="password"
+                            value={passwords.newPassword}
+                            onChange={handlePasswordsChange}
+                            placeholder="Nova senha"
+                            icon={<Lock size={18} />}
+                            required
+                        />
+                        <Input
+                            name="confirmPassword"
+                            type="password"
+                            value={passwords.confirmPassword}
+                            onChange={handlePasswordsChange}
+                            placeholder="Confirmar nova senha"
+                            icon={<Lock size={18} />}
+                            required
+                        />
+                    </div>
+                    <div className="flex justify-end">
+                        <Button type="submit" disabled={isUpdatingPassword}>
+                            {isUpdatingPassword ? 'Atualizando...' : 'Alterar senha'}
+                        </Button>
+                    </div>
+                </form>
+            </section>
         </div>
     );
 };
 
 export default Configuracoes;
-

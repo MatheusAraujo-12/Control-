@@ -84,29 +84,31 @@ const Profissionais = ({ professionals, setNotification }) => {
                 <h1 className="text-3xl font-bold">Equipe técnica</h1>
                 <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo técnico</Button>
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                            <th className="p-4 font-semibold">Nome</th>
-                            <th className="p-4 font-semibold">E-mail</th>
-                            <th className="p-4 font-semibold">Especialidade</th>
-                            <th className="p-4 font-semibold">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {professionals.map(prof => (
-                            <tr key={prof.id}>
-                                <td className="p-4">{prof.name}</td>
-                                <td className="p-4">{prof.email || 'Sem e-mail'}</td>
-                                <td className="p-4">{prof.specialty || 'Não informado'}</td>
-                                <td className="p-4">
-                                    <Button onClick={() => openModal(prof)} variant="secondary"><Edit size={16} /></Button>
-                                </td>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-left">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th className="p-4 font-semibold">Nome</th>
+                                <th className="p-4 font-semibold">E-mail</th>
+                                <th className="p-4 font-semibold">Especialidade</th>
+                                <th className="p-4 font-semibold">Ações</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {professionals.map(prof => (
+                                <tr key={prof.id}>
+                                    <td className="p-4">{prof.name}</td>
+                                    <td className="p-4">{prof.email || 'Sem e-mail'}</td>
+                                    <td className="p-4">{prof.specialty || 'Não informado'}</td>
+                                    <td className="p-4">
+                                        <Button onClick={() => openModal(prof)} variant="secondary"><Edit size={16} /></Button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <ProfessionalFormModal isOpen={isModalOpen} onClose={closeModal} professional={currentProfessional} onSave={handleSave} />
         </div>

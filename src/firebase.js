@@ -5,6 +5,7 @@ import {
     addDoc,
     collection,
     deleteDoc,
+    setDoc,
     doc,
     getDocs,
     onSnapshot,
@@ -13,7 +14,17 @@ import {
     updateDoc,
     where,
 } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
+import {
+    getAuth,
+    onAuthStateChanged,
+    signOut,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    updateProfile,
+    updatePassword,
+    reauthenticateWithCredential,
+    EmailAuthProvider,
+} from 'firebase/auth';
 
 const fallbackConfig = Object.freeze({
     apiKey: 'AIzaSyBclFrN5gmwVdpVqpR4oF8uVZqPPgEQqLc',
@@ -72,4 +83,11 @@ export {
     getDocs,
     signOut,
     onAuthStateChanged,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    updateProfile,
+    setDoc,
+    updatePassword,
+    reauthenticateWithCredential,
+    EmailAuthProvider,
 };

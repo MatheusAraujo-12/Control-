@@ -11,10 +11,27 @@ import Financeiro from './components/Financeiro';
 import Patio from './components/Patio';
 import Orcamentos from './components/Orcamentos';
 import Configuracoes from './components/Configuracoes';
+import Auth from './components/Auth';
 import { Toast } from './components/ui/Toast';
 import { Button } from './components/ui/Button';
 
-import { Gauge, Calendar, Users, UserCog, Wrench, PiggyBank, Car, Warehouse, ClipboardList, Settings as SettingsIcon, LogOut, Sun, Moon } from 'lucide-react';
+import {
+    Gauge,
+    Calendar,
+    Users,
+    UserCog,
+    Wrench,
+    PiggyBank,
+    Car,
+    Warehouse,
+    ClipboardList,
+    Settings as SettingsIcon,
+    LogOut,
+    Sun,
+    Moon,
+    Menu,
+    X,
+} from 'lucide-react';
 
 const formatCurrency = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 
@@ -101,6 +118,7 @@ const normalizeBudget = budget => ({
     total: Number.isFinite(budget.total) ? budget.total : 0,
     notes: budget.notes || '',
     status: budget.status || 'draft',
+    budgetNumber: budget.budgetNumber || '',
     createdAt: budget.createdAt || null,
     updatedAt: budget.updatedAt || null,
 });
@@ -162,6 +180,7 @@ export default function App() {
 
     const [activePage, setActivePage] = useState('dashboard');
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [notification, setNotification] = useState({ show: false, message: '', type: '' });
 
     const [clients, setClients] = useState([]);
@@ -171,8 +190,18 @@ export default function App() {
     const [transactions, setTransactions] = useState([]);
     const [yardVehicles, setYardVehicles] = useState([]);
     const [budgets, setBudgets] = useState([]);
-    const [appSettings, setAppSettings] = useState({ logoUrl: '' });
+    const [appSettings, setAppSettings] = useState({
+        logoUrl: '',
+        companyName: '',
+        companyEmail: '',
+        companyPhone: '',
+        companyDocument: '',
+        companyAddress: '',
+        companyWebsite: '',
+    });
+    const [userProfile, setUserProfile] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
 
     useEffect(() => {
         const collectionsToWatch = [
@@ -202,12 +231,26 @@ export default function App() {
             settingsRef,
             snapshot => {
                 if (!snapshot.exists()) {
-                    setAppSettings({ logoUrl: '' });
+                    setAppSettings({
+                        logoUrl: '',
+                        companyName: '',
+                        companyEmail: '',
+                        companyPhone: '',
+                        companyDocument: '',
+                        companyAddress: '',
+                        companyWebsite: '',
+                    });
                     return;
                 }
                 const data = snapshot.data() || {};
                 setAppSettings({
                     logoUrl: data.logoUrl || '',
+                    companyName: data.companyName || '',
+                    companyEmail: data.companyEmail || '',
+                    companyPhone: data.companyPhone || '',
+                    companyDocument: data.companyDocument || '',
+                    companyAddress: data.companyAddress || '',
+                    companyWebsite: data.companyWebsite || '',
                 });
             },
             error => {
@@ -221,10 +264,39 @@ export default function App() {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, user => {
             setCurrentUser(user);
+            setIsAuthReady(true);
+            if (!user) {
+                setActivePage('dashboard');
+                setIsSidebarOpen(false);
+            }
         });
 
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        if (!currentUser) {
+            setUserProfile(null);
+            return;
+        }
+
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const unsubscribe = onSnapshot(
+            userDocRef,
+            snapshot => {
+                if (!snapshot.exists()) {
+                    setUserProfile(null);
+                    return;
+                }
+                setUserProfile({ id: snapshot.id, ...snapshot.data() });
+            },
+            error => {
+                console.error('Erro ao buscar dados do usuário:', error);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [currentUser]);
 
     useEffect(() => {
         document.documentElement.classList.toggle('dark', isDarkMode);
@@ -238,13 +310,26 @@ export default function App() {
         setNotification({ show: true, ...payload });
     };
 
+    const toggleSidebar = () => setIsSidebarOpen(previous => !previous);
+
+    const closeSidebarOnMobile = () => {
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            setIsSidebarOpen(false);
+        }
+    };
+
+    const handleNavigate = pageId => {
+        setActivePage(pageId);
+        closeSidebarOnMobile();
+    };
+
     const handleLogout = async () => {
         try {
             await signOut(auth);
-            notify('Sessao encerrada.');
+            notify('Sessão encerrada.');
         } catch (error) {
-            console.error('Erro ao encerrar sessao:', error);
-            notify({ type: 'error', message: 'Nao foi possivel encerrar a sessao.' });
+            console.error('Erro ao encerrar sessão:', error);
+            notify({ type: 'error', message: 'Não foi possível encerrar a sessão.' });
         }
     };
 
@@ -379,6 +464,7 @@ export default function App() {
                         budgets={budgets}
                         clients={clients}
                         services={services}
+                        appSettings={appSettings}
                         setNotification={notify}
                     />
                 );
@@ -387,35 +473,66 @@ export default function App() {
             case 'patio':
                 return <Patio vehicles={yardVehicles} professionals={professionals} clients={clients} setNotification={notify} />;
             case 'configuracoes':
-                return <Configuracoes appSettings={appSettings} setNotification={notify} />;
+                return (
+                    <Configuracoes
+                        appSettings={appSettings}
+                        setNotification={notify}
+                        currentUser={currentUser}
+                        userProfile={userProfile}
+                    />
+                );
             default:
                 return <Dashboard setActivePage={setActivePage} stats={dashboardStats} isDarkMode={isDarkMode} />;
         }
     };
 
+
+    const toastElement = notification.show ? (
+        <Toast
+            message={notification.message}
+            type={notification.type}
+            onDismiss={() => setNotification({ show: false, message: '', type: '' })}
+        />
+    ) : null;
+
+    if (!isAuthReady) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                {toastElement}
+                <span className="text-base font-medium">Carregando...</span>
+            </div>
+        );
+    }
+
+    if (!currentUser) {
+        return (
+            <>
+                {toastElement}
+                <Auth setNotification={notify} />
+            </>
+        );
+    }
+
     const navItems = [
         { id: 'dashboard', label: 'Painel', icon: <Gauge size={20} /> },
         { id: 'agenda', label: 'Agenda da oficina', icon: <Calendar size={20} /> },
-        { id: 'clientes', label: 'Clientes e veículos', icon: <Users size={20} /> },
-        { id: 'profissionais', label: 'Equipe técnica', icon: <UserCog size={20} /> },
-        { id: 'servicos', label: 'Serviços da oficina', icon: <Wrench size={20} /> },
-        { id: 'orcamentos', label: 'Orçamentos', icon: <ClipboardList size={20} /> },
-        { id: 'patio', label: 'Controle de pátio', icon: <Warehouse size={20} /> },
+        { id: 'clientes', label: 'Clientes e veiculos', icon: <Users size={20} /> },
+        { id: 'profissionais', label: 'Equipe tecnica', icon: <UserCog size={20} /> },
+        { id: 'servicos', label: 'Servicos da oficina', icon: <Wrench size={20} /> },
+        { id: 'orcamentos', label: 'Orcamentos', icon: <ClipboardList size={20} /> },
+        { id: 'patio', label: 'Controle de patio', icon: <Warehouse size={20} /> },
         { id: 'financeiro', label: 'Financeiro', icon: <PiggyBank size={20} /> },
-        { id: 'configuracoes', label: 'Configurações', icon: <SettingsIcon size={20} /> },
+        { id: 'configuracoes', label: 'Configuracoes', icon: <SettingsIcon size={20} /> },
     ];
 
     return (
-        <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-            {notification.show && (
-                <Toast
-                    message={notification.message}
-                    type={notification.type}
-                    onDismiss={() => setNotification({ show: false, message: '', type: '' })}
-                />
-            )}
-            <aside className="w-64 bg-white dark:bg-gray-800 shadow-xl flex flex-col">
-                <div className="h-20 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 space-x-3">
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex">
+            {toastElement}
+            {isSidebarOpen && <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={closeSidebarOnMobile} aria-hidden="true" />}
+            <aside
+                className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-white dark:bg-gray-800 shadow-xl flex flex-col transition-transform duration-300 md:static md:translate-x-0 md:shadow-none ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:flex`}
+            >
+                <div className="h-20 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 space-x-3 px-4">
                     {appSettings.logoUrl ? (
                         <img src={appSettings.logoUrl} alt="Logomarca" className="h-10 w-10 object-contain rounded" />
                     ) : (
@@ -428,7 +545,7 @@ export default function App() {
                         <button
                             key={item.id}
                             type="button"
-                            onClick={() => setActivePage(item.id)}
+                            onClick={() => handleNavigate(item.id)}
                             className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors text-left ${activePage === item.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
                         >
                             {item.icon}
@@ -437,15 +554,25 @@ export default function App() {
                     ))}
                 </nav>
             </aside>
-            <main className="flex-1 flex flex-col">
-                <header className="h-20 bg-white dark:bg-gray-800 shadow-md flex items-center justify-between px-8">
-                    <div>
-                        <h1 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Bem-vindo(a) ao Control+ Oficina</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Painel de gestão para oficinas mecânicas</p>
-                    </div>
+            <main className="flex-1 flex flex-col min-h-screen">
+                <header className="h-20 bg-white dark:bg-gray-800 shadow-md flex items-center justify-between px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center space-x-3">
+                        <button
+                            type="button"
+                            onClick={toggleSidebar}
+                            className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-200 md:hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+                        >
+                            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                        </button>
+                        <div>
+                            <h1 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Bem-vindo(a) ao Control+ Oficina</h1>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Painel de gestão para oficinas mecânicas</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center space-x-2 sm:space-x-3">
                         {currentUser && (
-                            <span className="text-sm text-gray-500 dark:text-gray-400">{currentUser.email}</span>
+                            <span className="hidden sm:inline text-sm text-gray-500 dark:text-gray-400">{currentUser.email}</span>
                         )}
                         <Button onClick={handleLogout} variant="secondary" icon={<LogOut size={16} />}>
                             Sair
@@ -455,10 +582,11 @@ export default function App() {
                         </Button>
                     </div>
                 </header>
-                <div className="flex-1 p-8 overflow-y-auto">
+                <div className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
                     {renderPage()}
                 </div>
             </main>
         </div>
     );
-}
+
+    }

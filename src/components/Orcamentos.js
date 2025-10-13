@@ -1,13 +1,24 @@
 import React, { useMemo, useState } from 'react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Modal } from './ui/Modal';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Plus, Edit3, Trash2, Package, Wrench, FileText, DollarSign, User, Car as CarIcon } from 'lucide-react';
+import { Plus, Edit3, Trash2, Package, Wrench, FileText, DollarSign, User, Car as CarIcon, FileDown } from 'lucide-react';
 
-const formatCurrency = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number.isFinite(value) ? value : Number(value) || 0);
+const formatCurrency = value =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number.isFinite(value) ? value : Number(value) || 0);
+
+const formatDate = value => {
+    const parsed = value instanceof Date ? value : value?.seconds ? new Date(value.seconds * 1000) : value ? new Date(value) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+        return 'N/A';
+    }
+    return parsed.toLocaleDateString('pt-BR');
+};
 
 const STATUS_OPTIONS = [
     { value: 'draft', label: 'Rascunho' },
@@ -40,6 +51,7 @@ const createEmptyBudget = () => ({
     discount: '0',
     notes: '',
     status: 'draft',
+    budgetNumber: '',
     parts: [createEmptyPart()],
     services: [],
 });
@@ -56,7 +68,14 @@ const toDate = value => {
 
 const roundCurrency = value => Math.round((Number(value) || 0) * 100) / 100;
 
-const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification }) => {
+const getNextBudgetNumber = (existingBudgets = []) => {
+    const numbers = existingBudgets
+        .map(item => parseInt(item.budgetNumber, 10))
+        .filter(Number.isFinite);
+    const next = numbers.length ? Math.max(...numbers) + 1 : 1;
+    return String(next).padStart(6, '0');
+};
+const Orcamentos = ({ budgets = [], clients = [], services = [], appSettings = {}, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, id: null });
     const [currentBudget, setCurrentBudget] = useState(null);
@@ -118,6 +137,7 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
             discount: String(budget.discount ?? 0),
             notes: budget.notes || '',
             status: budget.status || 'draft',
+            budgetNumber: budget.budgetNumber || '',
             parts: (Array.isArray(budget.parts) && budget.parts.length ? budget.parts : [createEmptyPart()]).map(part => ({
                 id: part.id || `part-${Math.random().toString(16).slice(2, 8)}`,
                 name: part.name || '',
@@ -126,10 +146,10 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
             })),
             services: Array.isArray(budget.services)
                 ? budget.services.map(service => ({
-                    id: service.id || `service-${Math.random().toString(16).slice(2, 8)}`,
-                    name: service.name || '',
-                    price: Number(service.price) || 0,
-                }))
+                      id: service.id || `service-${Math.random().toString(16).slice(2, 8)}`,
+                      name: service.name || '',
+                      price: Number(service.price) || 0,
+                  }))
                 : [],
         });
         setSelectedServiceId('');
@@ -201,7 +221,6 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
             services: current.services.filter(service => service.id !== serviceId),
         }));
     };
-
     const handleSubmit = async event => {
         event.preventDefault();
 
@@ -230,6 +249,13 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
             price: roundCurrency(service.price),
         }));
 
+        const partsTotal = roundCurrency(partsPayload.reduce((sum, item) => sum + item.total, 0));
+        const servicesTotal = roundCurrency(servicesPayload.reduce((sum, item) => sum + item.price, 0));
+        const laborCost = roundCurrency(Number(formData.laborCost));
+        const discount = roundCurrency(Number(formData.discount));
+        const subtotal = roundCurrency(partsTotal + servicesTotal + laborCost);
+        const total = roundCurrency(subtotal - discount);
+
         const payload = {
             clientId: formData.clientId,
             clientName: formData.clientName.trim(),
@@ -238,11 +264,11 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
             vehiclePlate: formData.vehiclePlate.trim(),
             parts: partsPayload,
             services: servicesPayload,
-            laborCost: roundCurrency(totals.laborCost),
-            partsTotal: roundCurrency(totals.partsTotal),
-            servicesTotal: roundCurrency(totals.servicesTotal),
-            discount: roundCurrency(totals.discount),
-            total: roundCurrency(totals.total),
+            laborCost,
+            partsTotal,
+            servicesTotal,
+            discount,
+            total,
             notes: formData.notes.trim(),
             status: formData.status,
             updatedAt: serverTimestamp(),
@@ -250,19 +276,24 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
 
         try {
             if (currentBudget) {
-                await updateDoc(doc(db, 'budgets', currentBudget.id), payload);
+                await updateDoc(doc(db, 'budgets', currentBudget.id), {
+                    ...payload,
+                    budgetNumber: currentBudget.budgetNumber || '',
+                });
                 setNotification?.({ type: 'success', message: 'Orçamento atualizado com sucesso!' });
             } else {
+                const budgetNumber = getNextBudgetNumber(budgets);
                 await addDoc(collection(db, 'budgets'), {
                     ...payload,
+                    budgetNumber,
                     createdAt: serverTimestamp(),
                 });
                 setNotification?.({ type: 'success', message: 'Orçamento criado com sucesso!' });
             }
             closeModal();
         } catch (error) {
-            console.error('Erro ao salvar orçamento:', error);
-            setNotification?.({ type: 'error', message: 'Não foi possível salvar o orçamento.' });
+            console.error('Erro ao salvar orcamento:', error);
+            setNotification?.({ type: 'error', message: 'Não foi possivel salvar o orçamento.' });
         }
     };
 
@@ -279,78 +310,190 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
             setNotification?.({ type: 'success', message: 'Orçamento removido com sucesso.' });
         } catch (error) {
             console.error('Erro ao remover orçamento:', error);
-            setNotification?.({ type: 'error', message: 'Não foi possível remover o orçamento.' });
+            setNotification?.({ type: 'error', message: 'Nao foi possivel remover o orcamento.' });
         } finally {
             setConfirmDelete({ isOpen: false, id: null });
         }
     };
+    const handleGeneratePdf = budget => {
+        const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+        const marginLeft = 40;
+        let cursorY = 60;
 
-    const getFormattedDate = value => {
-        const parsed = toDate(value);
-        if (!parsed) {
-            return '—';
+        if (appSettings.logoUrl) {
+            try {
+                pdf.addImage(appSettings.logoUrl, 'PNG', marginLeft, cursorY, 80, 80);
+            } catch (error) {
+                console.warn('Não foi possivel adicionar a logomarca ao PDF:', error);
+            }
         }
-        return parsed.toLocaleDateString('pt-BR');
-    };
 
+        const companyInfoStartX = appSettings.logoUrl ? marginLeft + 100 : marginLeft;
+        pdf.setFontSize(18);
+        pdf.text(appSettings.companyName || 'Control+ Oficina', companyInfoStartX, cursorY + 20);
+        pdf.setFontSize(11);
+        const companyLines = [
+            appSettings.companyDocument ? `Documento: ${appSettings.companyDocument}` : null,
+            appSettings.companyAddress || null,
+            appSettings.companyPhone ? `Telefone: ${appSettings.companyPhone}` : null,
+            appSettings.companyEmail || null,
+            appSettings.companyWebsite || null,
+        ].filter(Boolean);
+        companyLines.forEach((line, index) => {
+            pdf.text(line, companyInfoStartX, cursorY + 40 + index * 14);
+        });
+
+        cursorY += Math.max(100, companyLines.length * 14 + 60);
+
+        pdf.setFontSize(12);
+        pdf.text(`Orcamento Numero ${budget.budgetNumber || budget.id}`, marginLeft, cursorY);
+        pdf.text(`Data: ${formatDate(budget.updatedAt || budget.createdAt)}`, pdf.internal.pageSize.getWidth() - marginLeft, cursorY, {
+            align: 'right',
+        });
+        cursorY += 20;
+
+        const client = clients.find(item => item.id === budget.clientId);
+        const clientLines = [
+            `Cliente: ${budget.clientName}`,
+            client?.phone ? `Telefone: ${client.phone}` : null,
+            client?.email ? `E-mail: ${client.email}` : null,
+            [budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).length
+                ? `Veiculo: ${[budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).join(' ')}`
+                : null,
+        ].filter(Boolean);
+        pdf.setFontSize(11);
+        clientLines.forEach(line => {
+            pdf.text(line, marginLeft, cursorY);
+            cursorY += 16;
+        });
+        cursorY += 10;
+
+        if (budget.services?.length) {
+            pdf.autoTable({
+                startY: cursorY,
+                head: [['Servico', 'Valor']],
+                body: budget.services.map(service => [service.name, formatCurrency(service.price)]),
+                theme: 'striped',
+                styles: { fontSize: 10 },
+                columnStyles: { 1: { halign: 'right' } },
+                headStyles: { fillColor: [37, 99, 235] },
+                margin: { left: marginLeft, right: marginLeft },
+            });
+            cursorY = pdf.previousAutoTable.finalY + 20;
+        }
+
+        if (budget.parts?.length) {
+            pdf.autoTable({
+                startY: cursorY,
+                head: [['Peca', 'Qtd.', 'Valor unitario', 'Total']],
+                body: budget.parts.map(part => [
+                    part.name,
+                    String(part.quantity),
+                    formatCurrency(part.unitPrice),
+                    formatCurrency(part.total ?? Number(part.quantity || 0) * Number(part.unitPrice || 0)),
+                ]),
+                theme: 'striped',
+                styles: { fontSize: 10 },
+                columnStyles: {
+                    1: { halign: 'center' },
+                    2: { halign: 'right' },
+                    3: { halign: 'right' },
+                },
+                headStyles: { fillColor: [37, 99, 235] },
+                margin: { left: marginLeft, right: marginLeft },
+            });
+            cursorY = pdf.previousAutoTable.finalY + 20;
+        }
+
+        pdf.setFontSize(12);
+        pdf.text('Resumo financeiro', marginLeft, cursorY);
+        cursorY += 16;
+        pdf.setFontSize(11);
+        const summaryLines = [
+            ['Pecas', formatCurrency(budget.partsTotal ?? 0)],
+            ['Servicos', formatCurrency(budget.servicesTotal ?? 0)],
+            ['Mao de obra', formatCurrency(budget.laborCost ?? 0)],
+            ['Subtotal', formatCurrency((budget.partsTotal || 0) + (budget.servicesTotal || 0) + (budget.laborCost || 0))],
+            ['Desconto', `- ${formatCurrency(budget.discount ?? 0)}`],
+            ['Total', formatCurrency(budget.total ?? 0)],
+        ];
+        summaryLines.forEach(([label, value]) => {
+            pdf.text(label, marginLeft, cursorY);
+            pdf.text(value, pdf.internal.pageSize.getWidth() - marginLeft, cursorY, { align: 'right' });
+            cursorY += 16;
+        });
+
+        if (budget.notes) {
+            cursorY += 10;
+            pdf.setFontSize(12);
+            pdf.text('Observacoes', marginLeft, cursorY);
+            cursorY += 14;
+            pdf.setFontSize(11);
+            const notes = pdf.splitTextToSize(budget.notes, pdf.internal.pageSize.getWidth() - marginLeft * 2);
+            pdf.text(notes, marginLeft, cursorY);
+        }
+
+        pdf.save(`orcamento-${budget.budgetNumber || budget.id}.pdf`);
+    };
     return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Orçamentos</h1>
+        <div className="space-y-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Orçamentos</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Gerencie e compartilhe propostas detalhadas com seus clientes.</p>
+                </div>
                 <Button onClick={openNewBudgetModal} icon={<Plus size={18} />}>Novo orçamento</Button>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                {sortedBudgets.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                        Nenhum orçamento cadastrado até o momento.
-                    </div>
-                ) : (
-                    <table className="w-full text-left">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
+                                <th className="p-4 font-semibold">Número</th>
                                 <th className="p-4 font-semibold">Cliente</th>
-                                <th className="p-4 font-semibold">Veículo</th>
-                                <th className="p-4 font-semibold">Itens</th>
-                                <th className="p-4 font-semibold">Total</th>
                                 <th className="p-4 font-semibold">Status</th>
+                                <th className="p-4 font-semibold">Total</th>
                                 <th className="p-4 font-semibold">Atualizado em</th>
                                 <th className="p-4 font-semibold text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {sortedBudgets.map(budget => {
-                                const vehicle = [budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).join(' ');
-                                const statusStyle = STATUS_STYLES[budget.status] || STATUS_STYLES.draft;
-                                const statusLabel = STATUS_OPTIONS.find(option => option.value === budget.status)?.label || 'Rascunho';
-                                return (
-                                    <tr key={budget.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                                        <td className="p-4">{budget.clientName || 'Cliente não informado'}</td>
-                                        <td className="p-4">{vehicle || 'Sem veículo'}</td>
-                                        <td className="p-4 text-sm text-gray-600 dark:text-gray-300">
-                                            {budget.services?.length || 0} serviços · {budget.parts?.length || 0} peças
-                                        </td>
-                                        <td className="p-4 font-semibold text-gray-900 dark:text-gray-100">{formatCurrency(budget.total)}</td>
-                                        <td className="p-4">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyle}`}>{statusLabel}</span>
-                                        </td>
-                                        <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{getFormattedDate(budget.updatedAt || budget.createdAt)}</td>
-                                        <td className="p-4 text-right space-x-2">
-                                            <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" icon={<Edit3 size={16} />}>Editar</Button>
-                                            <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" icon={<Trash2 size={16} />}>Excluir</Button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {sortedBudgets.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">Nenhum orçamento cadastrado até o momento.</td>
+                                </tr>
+                            ) : (
+                                sortedBudgets.map(budget => {
+                                    const statusStyle = STATUS_STYLES[budget.status] || STATUS_STYLES.draft;
+                                    const statusLabel = STATUS_OPTIONS.find(option => option.value === budget.status)?.label || 'Rascunho';
+                                    return (
+                                        <tr key={budget.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                            <td className="p-4 font-semibold text-gray-800 dark:text-gray-100">{budget.budgetNumber || 'N/A'}</td>
+                                            <td className="p-4 text-sm text-gray-700 dark:text-gray-200">{budget.clientName || 'Cliente nao informado'}</td>
+                                            <td className="p-4">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyle}`}>{statusLabel}</span>
+                                            </td>
+                                            <td className="p-4 font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(budget.total)}</td>
+                                            <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{formatDate(budget.updatedAt || budget.createdAt)}</td>
+                                            <td className="p-4 text-right space-x-2">
+                                                <Button onClick={() => handleGeneratePdf(budget)} variant="secondary" icon={<FileDown size={16} />}>Gerar PDF</Button>
+                                                <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" icon={<Edit3 size={16} />}>Editar</Button>
+                                                <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" icon={<Trash2 size={16} />}>Excluir</Button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
                         </tbody>
                     </table>
-                )}
+                </div>
             </div>
 
             <Modal
                 isOpen={isModalOpen}
                 onClose={closeModal}
-                title={currentBudget ? 'Editar orçamento' : 'Novo orçamento'}
+                title={currentBudget ? `Editar orcamento ${currentBudget.budgetNumber || ''}` : 'Novo orcamento'}
             >
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -382,7 +525,7 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                             name="vehicleBrand"
                             value={formData.vehicleBrand}
                             onChange={handleInputChange}
-                            placeholder="Marca do veículo"
+                            placeholder="Marca do veiculo"
                             icon={<CarIcon size={18} />}
                         />
                         <Input
@@ -415,7 +558,7 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                     </div>
 
                     <div className="space-y-3">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                             <select
                                 value={selectedServiceId}
                                 onChange={event => setSelectedServiceId(event.target.value)}
@@ -424,7 +567,7 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                                 <option value="">Adicionar serviço existente</option>
                                 {services.map(service => (
                                     <option key={service.id} value={service.id}>
-                                        {service.name} — {formatCurrency(service.price)}
+                                        {service.name} - {formatCurrency(service.price)}
                                     </option>
                                 ))}
                             </select>
@@ -435,7 +578,7 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                         ) : (
                             <ul className="space-y-2">
                                 {formData.services.map(service => (
-                                    <li key={service.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+                                    <li key={service.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
                                         <div>
                                             <p className="font-medium text-gray-700 dark:text-gray-200">{service.name}</p>
                                             <p className="text-sm text-gray-500 dark:text-gray-400">{formatCurrency(service.price)}</p>
@@ -448,7 +591,7 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">Peças e materiais</h3>
                             <Button type="button" variant="secondary" icon={<Plus size={16} />} onClick={handleAddPart}>Adicionar peça</Button>
                         </div>
@@ -546,15 +689,15 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Resumo financeiro</h3>
                         <dl className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                             <div className="flex justify-between">
-                                <dt>Peças</dt>
+                                <dt>Pecas</dt>
                                 <dd>{formatCurrency(totals.partsTotal)}</dd>
                             </div>
                             <div className="flex justify-between">
-                                <dt>Serviços</dt>
+                                <dt>Servicos</dt>
                                 <dd>{formatCurrency(totals.servicesTotal)}</dd>
                             </div>
                             <div className="flex justify-between">
-                                <dt>Mão de obra</dt>
+                                <dt>Mao de obra</dt>
                                 <dd>{formatCurrency(totals.laborCost)}</dd>
                             </div>
                             <div className="flex justify-between">
@@ -566,13 +709,13 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
                                 <dd>- {formatCurrency(totals.discount)}</dd>
                             </div>
                             <div className="flex justify-between text-lg font-semibold text-gray-800 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700 pt-3">
-                                <dt>Total do orçamento</dt>
+                                <dt>Total do orcamento</dt>
                                 <dd>{formatCurrency(totals.total)}</dd>
                             </div>
                         </dl>
                     </div>
 
-                    <div className="flex justify-end space-x-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                         <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
                         <Button type="submit">{currentBudget ? 'Salvar alterações' : 'Criar orçamento'}</Button>
                     </div>
@@ -591,4 +734,3 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], setNotification
 };
 
 export default Orcamentos;
-
