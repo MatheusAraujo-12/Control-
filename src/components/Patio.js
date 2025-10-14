@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -200,7 +200,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
     );
 };
 
-const Patio = ({ vehicles, professionals, clients, setNotification }) => {
+const Patio = ({ userId, vehicles, professionals, clients, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedVehicle, setSelectedVehicle] = useState(null);
 
@@ -231,6 +231,10 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
     };
 
     const handleSaveVehicle = async (data) => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return;
+        }
         try {
             const appointmentIso = toIsoOrNull(data.appointmentDate);
             if (!data.clientId || !data.professionalId || !appointmentIso) {
@@ -263,9 +267,9 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
             let yardDocId = selectedVehicle?.id;
 
             if (selectedVehicle) {
-                await updateDoc(doc(db, 'yard', selectedVehicle.id), yardPayload);
+                await updateDoc(userDocRef(userId, 'yard', selectedVehicle.id), yardPayload);
             } else {
-                const yardRef = await addDoc(collection(db, 'yard'), yardPayload);
+                const yardRef = await addDoc(userCollectionRef(userId, 'yard'), yardPayload);
                 yardDocId = yardRef.id;
             }
 
@@ -288,11 +292,11 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
 
             let appointmentId = selectedVehicle?.appointmentId;
             if (appointmentId) {
-                await updateDoc(doc(db, 'appointments', appointmentId), appointmentPayload);
+                await updateDoc(userDocRef(userId, 'appointments', appointmentId), appointmentPayload);
             } else {
-                const appointmentRef = await addDoc(collection(db, 'appointments'), appointmentPayload);
+                const appointmentRef = await addDoc(userCollectionRef(userId, 'appointments'), appointmentPayload);
                 appointmentId = appointmentRef.id;
-                await updateDoc(doc(db, 'yard', yardDocId), { appointmentId });
+                await updateDoc(userDocRef(userId, 'yard', yardDocId), { appointmentId });
             }
 
             setIsModalOpen(false);
@@ -305,8 +309,12 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
     };
 
     const handleLiberarVeiculo = async (vehicle) => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return;
+        }
         try {
-            await updateDoc(doc(db, 'yard', vehicle.id), {
+            await updateDoc(userDocRef(userId, 'yard', vehicle.id), {
                 status: 'liberado',
                 exitTime: new Date().toISOString(),
             });
@@ -314,7 +322,7 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
 
             if (vehicle.appointmentId) {
 
-                await updateDoc(doc(db, 'appointments', vehicle.appointmentId), { status: 'finalizado' });
+                await updateDoc(userDocRef(userId, 'appointments', vehicle.appointmentId), { status: 'finalizado' });
 
             }
         } catch (error) {
@@ -324,8 +332,12 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
     };
 
     const handleRemoverRegistro = async (vehicle) => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return;
+        }
         try {
-            await deleteDoc(doc(db, 'yard', vehicle.id));
+            await deleteDoc(userDocRef(userId, 'yard', vehicle.id));
             setNotification({ type: 'success', message: 'Registro removido do patio.' });
         } catch (error) {
             console.error('Erro ao remover registro do patio:', error);
@@ -501,3 +513,4 @@ const Patio = ({ vehicles, professionals, clients, setNotification }) => {
 };
 
 export default Patio;
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -73,7 +73,7 @@ const CheckoutModal = ({ isOpen, onClose, appointment, onProcess }) => {
     );
 };
 
-const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, professionals, services, selectedTime, setNotification }) => {
+const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, professionals, services, selectedTime, setNotification, userId }) => {
     const buildDefaultAppointment = useCallback(() => ({
         clientId: '',
         professionalId: '',
@@ -180,9 +180,14 @@ const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, profe
             type: 'receita',
         };
 
+        if (!userId) {
+            setNotification({ show: true, message: 'Sessao expirada. Faça login novamente.', type: 'error' });
+            return;
+        }
+
         try {
-            await addDoc(collection(db, 'transactions'), transactionData);
-            await updateDoc(doc(db, 'appointments', appointment.id), {
+            await addDoc(userCollectionRef(userId, 'transactions'), transactionData);
+            await updateDoc(userDocRef(userId, 'appointments', appointment.id), {
                 status: 'finalizado',
                 paymentMethod: checkoutData.paymentMethod,
                 partsCost: parsedPartsCost,
@@ -280,24 +285,30 @@ const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, profe
     );
 };
 
-const Agenda = ({ appointments, professionals, clients, services, setNotification }) => {
+const Agenda = ({ userId, appointments, professionals, clients, services, setNotification }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [selectedTime, setSelectedTime] = useState(null);
 
     const handleSaveAppointment = async appointmentData => {
+        if (!userId) {
+            setNotification({ show: true, message: 'Sessao expirada. Faça login novamente.', type: 'error' });
+            return false;
+        }
         try {
             if (selectedAppointment) {
-                await updateDoc(doc(db, 'appointments', selectedAppointment.id), appointmentData);
+                await updateDoc(userDocRef(userId, 'appointments', selectedAppointment.id), appointmentData);
             } else {
-                await addDoc(collection(db, 'appointments'), appointmentData);
+                await addDoc(userCollectionRef(userId, 'appointments'), appointmentData);
             }
             setIsModalOpen(false);
             setNotification({ show: true, message: 'Agendamento salvo com sucesso!', type: 'success' });
+            return true;
         } catch (error) {
             console.error('Erro ao salvar agendamento:', error);
             setNotification({ show: true, message: 'Erro ao salvar agendamento.', type: 'error' });
+            return false;
         }
     };
 
@@ -397,6 +408,7 @@ const Agenda = ({ appointments, professionals, clients, services, setNotificatio
                 services={services}
                 selectedTime={selectedTime}
                 setNotification={setNotification}
+                userId={userId}
             />
         </div>
     );

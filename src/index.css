@@ -1,5 +1,7 @@
-/* Este ficheiro pode permanecer vazio se estiver a usar o CDN do Tailwind, 
-   ou pode adicionar estilos globais aqui se preferir. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 body {
   font-family: 'Inter', sans-serif;
 }

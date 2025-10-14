@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -26,22 +26,30 @@ const ServiceFormModal = ({ isOpen, onClose, service, onSave }) => {
 
     const handleSubmit = async event => {
         event.preventDefault();
+        if (isSaving) {
+            return;
+        }
         setIsSaving(true);
-        const success = await onSave(formData);
-        setIsSaving(false);
-        if (success) {
-            onClose();
+        try {
+            const success = await onSave(formData);
+            if (success) {
+                onClose();
+            }
+        } catch (error) {
+            console.error("Erro ao submeter servico:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={service ? 'Editar serviço da oficina' : 'Novo serviço'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={service ? 'Editar servico da oficina' : 'Novo servico'}>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do serviço (ex: troca de óleo)" icon={<Wrench size={18} />} required />
-                <Input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="Preço mão de obra (R$)" icon={<DollarSign size={18} />} required />
+                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do servico (ex: troca de oleo)" icon={<Wrench size={18} />} required />
+                <Input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="Preco mao de obra (R$)" icon={<DollarSign size={18} />} required />
                 <Input name="duration" type="number" value={formData.duration} onChange={handleChange} placeholder="Tempo estimado (min)" icon={<Clock size={18} />} required />
                 <div>
-                    <label className="block text-sm font-medium">Tipo de repasse para o técnico</label>
+                    <label className="block text-sm font-medium">Tipo de repasse para o tecnico</label>
                     <select name="commissionType" value={formData.commissionType} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
                         <option value="percentage">Percentual (%)</option>
                         <option value="fixed">Valor fixo (R$)</option>
@@ -50,14 +58,14 @@ const ServiceFormModal = ({ isOpen, onClose, service, onSave }) => {
                 <Input name="commissionValue" type="number" step="0.01" value={formData.commissionValue} onChange={handleChange} placeholder="Valor do repasse" icon={<Coins size={18} />} required />
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar serviço'}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar servico'}</Button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-const Servicos = ({ services, setNotification }) => {
+const Servicos = ({ userId, services, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentService, setCurrentService] = useState(null);
 
@@ -72,6 +80,10 @@ const Servicos = ({ services, setNotification }) => {
     };
 
     const handleSave = async data => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return false;
+        }
         try {
             const serviceData = {
                 ...data,
@@ -81,21 +93,22 @@ const Servicos = ({ services, setNotification }) => {
             };
 
             if ([serviceData.price, serviceData.commissionValue, serviceData.duration].some(value => Number.isNaN(value))) {
-                setNotification({ type: 'error', message: 'Preencha valores numéricos válidos.' });
+                setNotification({ type: 'error', message: 'Preencha valores numericos validos.' });
                 return false;
             }
 
             if (currentService) {
-                await updateDoc(doc(db, 'services', currentService.id), serviceData);
-                setNotification({ type: 'success', message: 'Serviço atualizado com sucesso!' });
+                await updateDoc(userDocRef(userId, 'services', currentService.id), serviceData);
+                setNotification({ type: 'success', message: 'Servico atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, 'services'), serviceData);
-                setNotification({ type: 'success', message: 'Serviço cadastrado com sucesso!' });
+                await addDoc(userCollectionRef(userId, 'services'), serviceData);
+                setNotification({ type: 'success', message: 'Servico cadastrado com sucesso!' });
             }
             return true;
         } catch (error) {
-            console.error('Erro ao salvar serviço:', error);
-            setNotification({ type: 'error', message: 'Não foi possível salvar o serviço.' });
+            console.error('Erro ao salvar servico:', error);
+            const extra = error && error.code ? ` (${error.code})` : '';
+            setNotification({ type: 'error', message: `Nao foi possivel salvar o servico${extra}.` });
             return false;
         }
     };
@@ -103,18 +116,18 @@ const Servicos = ({ services, setNotification }) => {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Serviços da oficina</h1>
-                <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo serviço</Button>
+                <h1 className="text-3xl font-bold">Servicos da oficina</h1>
+                <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo servico</Button>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            <th className="p-4 font-semibold">Serviço</th>
-                            <th className="p-4 font-semibold">Preço mão de obra</th>
-                            <th className="p-4 font-semibold">Repasse técnico</th>
+                            <th className="p-4 font-semibold">Servico</th>
+                            <th className="p-4 font-semibold">Preco mao de obra</th>
+                            <th className="p-4 font-semibold">Repasse tecnico</th>
                             <th className="p-4 font-semibold">Tempo (min)</th>
-                            <th className="p-4 font-semibold">Ações</th>
+                            <th className="p-4 font-semibold">Acoes</th>
                         </tr>
                     </thead>
                     <tbody>

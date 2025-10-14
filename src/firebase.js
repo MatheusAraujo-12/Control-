@@ -26,7 +26,7 @@ import {
     EmailAuthProvider,
 } from 'firebase/auth';
 
-const fallbackConfig = Object.freeze({
+const firebaseConfig = Object.freeze({
     apiKey: 'AIzaSyBclFrN5gmwVdpVqpR4oF8uVZqPPgEQqLc',
     authDomain: 'controlplus-b35a1.firebaseapp.com',
     projectId: 'controlplus-b35a1',
@@ -36,36 +36,32 @@ const fallbackConfig = Object.freeze({
     measurementId: 'G-Y12LFE78EB',
 });
 
-const firebaseConfig = {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || fallbackConfig.apiKey,
-    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || fallbackConfig.authDomain,
-    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || fallbackConfig.projectId,
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || fallbackConfig.storageBucket,
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || fallbackConfig.messagingSenderId,
-    appId: process.env.REACT_APP_FIREBASE_APP_ID || fallbackConfig.appId,
-    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || fallbackConfig.measurementId,
-};
-
-const missingConfigKeys = Object.entries(firebaseConfig)
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-if (missingConfigKeys.length > 0) {
-    // eslint-disable-next-line no-console
-    console.warn(`[firebase] Missing configuration values for: ${missingConfigKeys.join(', ')}`);
-}
-
-if (process.env.NODE_ENV === 'production' && process.env.REACT_APP_FIREBASE_API_KEY === undefined) {
-    // eslint-disable-next-line no-console
-    console.warn('[firebase] Using fallback Firebase configuration. Define REACT_APP_FIREBASE_* variables before deploying to production.');
-}
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-const db = initializeFirestore(app, {
-    ignoreUndefinedProperties: true,
-});
+const db = initializeFirestore(
+    app,
+    {
+        ignoreUndefinedProperties: true,
+        experimentalForceLongPolling: true,
+        useFetchStreams: false,
+    },
+    'controlplus'
+);
+
+const userCollectionRef = (uid, ...pathSegments) => {
+    if (!uid) {
+        throw new Error('userCollectionRef requires a valid uid');
+    }
+    return collection(db, 'users', uid, ...pathSegments);
+};
+
+const userDocRef = (uid, ...pathSegments) => {
+    if (!uid) {
+        throw new Error('userDocRef requires a valid uid');
+    }
+    return doc(db, 'users', uid, ...pathSegments);
+};
 
 export {
     db,
@@ -90,4 +86,6 @@ export {
     updatePassword,
     reauthenticateWithCredential,
     EmailAuthProvider,
+    userCollectionRef,
+    userDocRef,
 };

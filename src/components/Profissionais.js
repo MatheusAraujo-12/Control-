@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -24,30 +24,38 @@ const ProfessionalFormModal = ({ isOpen, onClose, professional, onSave }) => {
 
     const handleSubmit = async event => {
         event.preventDefault();
+        if (isSaving) {
+            return;
+        }
         setIsSaving(true);
-        const success = await onSave(formData);
-        setIsSaving(false);
-        if (success) {
-            onClose();
+        try {
+            const success = await onSave(formData);
+            if (success) {
+                onClose();
+            }
+        } catch (error) {
+            console.error("Erro ao submeter tecnico:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={professional ? 'Editar técnico' : 'Novo técnico'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={professional ? 'Editar tecnico' : 'Novo tecnico'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome completo" icon={<User size={18} />} required />
                 <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="E-mail" icon={<Mail size={18} />} />
-                <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Especialidade (ex: elétrica, mecânica pesada)" icon={<Wrench size={18} />} />
+                <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Especialidade (ex: eletrica, mecanica pesada)" icon={<Wrench size={18} />} />
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar técnico'}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar tecnico'}</Button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-const Profissionais = ({ professionals, setNotification }) => {
+const Profissionais = ({ userId, professionals, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentProfessional, setCurrentProfessional] = useState(null);
 
@@ -62,18 +70,23 @@ const Profissionais = ({ professionals, setNotification }) => {
     };
 
     const handleSave = async data => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return false;
+        }
         try {
             if (currentProfessional) {
-                await updateDoc(doc(db, 'professionals', currentProfessional.id), data);
-                setNotification({ type: 'success', message: 'Técnico atualizado com sucesso!' });
+                await updateDoc(userDocRef(userId, 'professionals', currentProfessional.id), data);
+                setNotification({ type: 'success', message: 'Tecnico atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, 'professionals'), data);
-                setNotification({ type: 'success', message: 'Técnico cadastrado com sucesso!' });
+                await addDoc(userCollectionRef(userId, 'professionals'), data);
+                setNotification({ type: 'success', message: 'Tecnico cadastrado com sucesso!' });
             }
             return true;
         } catch (error) {
-            console.error('Erro ao salvar técnico:', error);
-            setNotification({ type: 'error', message: 'Não foi possível salvar o técnico.' });
+            console.error('Erro ao salvar tecnico:', error);
+            const extra = error && error.code ? ` (${error.code})` : '';
+            setNotification({ type: 'error', message: `Nao foi possivel salvar o tecnico${extra}.` });
             return false;
         }
     };
@@ -81,8 +94,8 @@ const Profissionais = ({ professionals, setNotification }) => {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Equipe técnica</h1>
-                <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo técnico</Button>
+                <h1 className="text-3xl font-bold">Equipe tecnica</h1>
+                <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo tecnico</Button>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
                 <div className="overflow-x-auto">
@@ -92,15 +105,15 @@ const Profissionais = ({ professionals, setNotification }) => {
                                 <th className="p-4 font-semibold">Nome</th>
                                 <th className="p-4 font-semibold">E-mail</th>
                                 <th className="p-4 font-semibold">Especialidade</th>
-                                <th className="p-4 font-semibold">Ações</th>
+                                <th className="p-4 font-semibold">Acoes</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {professionals.map(prof => (
                                 <tr key={prof.id}>
                                     <td className="p-4">{prof.name}</td>
-                                    <td className="p-4">{prof.email || 'Sem e-mail'}</td>
-                                    <td className="p-4">{prof.specialty || 'Não informado'}</td>
+                                    <td className="p-4">{prof.email || "Sem e-mail"}</td>
+                                    <td className="p-4">{prof.specialty || "Nao informado"}</td>
                                     <td className="p-4">
                                         <Button onClick={() => openModal(prof)} variant="secondary"><Edit size={16} /></Button>
                                     </td>

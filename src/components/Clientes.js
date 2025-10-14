@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -29,11 +29,19 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
 
     const handleSubmit = async event => {
         event.preventDefault();
+        if (isSaving) {
+            return;
+        }
         setIsSaving(true);
-        const success = await onSave(formData);
-        setIsSaving(false);
-        if (success) {
-            onClose();
+        try {
+            const success = await onSave(formData);
+            if (success) {
+                onClose();
+            }
+        } catch (error) {
+            console.error("Erro ao salvar cliente:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -46,7 +54,7 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
                 <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="E-mail" icon={<Mail size={18} />} />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca do veículo" icon={<Car size={18} />} />
+                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca do veiculo" icon={<Car size={18} />} />
                     <Input name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} placeholder="Modelo" icon={<Wrench size={18} />} />
                     <Input name="vehicleYear" value={formData.vehicleYear} onChange={handleChange} placeholder="Ano" icon={<CalendarIcon size={18} />} />
                     <Input name="vehiclePlate" value={formData.vehiclePlate} onChange={handleChange} placeholder="Placa" icon={<Hash size={18} />} />
@@ -54,14 +62,14 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
 
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : client ? 'Salvar alterações' : 'Cadastrar cliente'}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving ? "Salvando..." : client ? "Salvar alteracoes" : "Cadastrar cliente"}</Button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-const Clientes = ({ clients, setNotification }) => {
+const Clientes = ({ userId, clients, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentClient, setCurrentClient] = useState(null);
 
@@ -76,18 +84,23 @@ const Clientes = ({ clients, setNotification }) => {
     };
 
     const handleSaveClient = async clientData => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return false;
+        }
         try {
             if (currentClient) {
-                await updateDoc(doc(db, 'clients', currentClient.id), clientData);
+                await updateDoc(userDocRef(userId, 'clients', currentClient.id), clientData);
                 setNotification({ type: 'success', message: 'Cliente atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, 'clients'), { ...clientData, createdAt: serverTimestamp() });
+                await addDoc(userCollectionRef(userId, 'clients'), { ...clientData, createdAt: serverTimestamp() });
                 setNotification({ type: 'success', message: 'Cliente cadastrado com sucesso!' });
             }
             return true;
         } catch (error) {
             console.error('Erro ao salvar cliente:', error);
-            setNotification({ type: 'error', message: 'Não foi possível salvar o cliente.' });
+            const extra = error && error.code ? ` (${error.code})` : '';
+            setNotification({ type: 'error', message: `Nao foi possivel salvar o cliente${extra}.` });
             return false;
         }
     };
@@ -95,7 +108,7 @@ const Clientes = ({ clients, setNotification }) => {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Clientes e veículos</h1>
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Clientes e veiculos</h1>
                 <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo cliente</Button>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
@@ -106,21 +119,21 @@ const Clientes = ({ clients, setNotification }) => {
                                 <th className="p-4 font-semibold">Cliente</th>
                                 <th className="p-4 font-semibold">Telefone</th>
                                 <th className="p-4 font-semibold">E-mail</th>
-                                <th className="p-4 font-semibold">Veículo</th>
+                                <th className="p-4 font-semibold">Veiculo</th>
                                 <th className="p-4 font-semibold">Placa</th>
-                                <th className="p-4 font-semibold">Ações</th>
+                                <th className="p-4 font-semibold">Acoes</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {clients.map(client => {
-                                const vehicle = [client.vehicleBrand, client.vehicleModel, client.vehicleYear].filter(Boolean).join(' ');
+                                const vehicle = [client.vehicleBrand, client.vehicleModel, client.vehicleYear].filter(Boolean).join(" ");
                                 return (
                                     <tr key={client.id}>
                                         <td className="p-4">{client.name}</td>
                                         <td className="p-4">{client.phone}</td>
                                         <td className="p-4">{client.email}</td>
-                                        <td className="p-4">{vehicle || 'Não informado'}</td>
-                                        <td className="p-4">{client.vehiclePlate || 'Sem placa'}</td>
+                                <td className="p-4">{vehicle || 'Nao informado'}</td>
+                                <td className="p-4">{client.vehiclePlate || 'Sem placa'}</td>
                                         <td className="p-4">
                                             <Button onClick={() => openModal(client)} variant="secondary"><Edit size={16} /></Button>
                                         </td>

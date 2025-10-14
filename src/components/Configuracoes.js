@@ -1,12 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
-import {
-    db,
-    updateProfile,
-    reauthenticateWithCredential,
-    EmailAuthProvider,
-    updatePassword,
-} from '../firebase';
+import { setDoc } from 'firebase/firestore';
+import { userDocRef, updateProfile, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from '../firebase';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import {
@@ -43,7 +37,7 @@ const defaultPersonalData = {
     phone: '',
 };
 
-const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userProfile }) => {
+const Configuracoes = ({ userId, appSettings = {}, setNotification, currentUser, userProfile }) => {
     const fileInputRef = useRef(null);
     const [logoPreview, setLogoPreview] = useState(appSettings.logoUrl || '');
     const [logoFile, setLogoFile] = useState(null);
@@ -122,13 +116,16 @@ const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userPro
 
     const handleSaveLogo = async () => {
         if (!logoPreview) {
-            notify('error', 'Escolha uma imagem antes de salvar.');
+            return;
+        }
+        if (!userId) {
+            notify('error', 'Sessao expirada. FaÁa login novamente.');
             return;
         }
 
         setIsSavingLogo(true);
         try {
-            await setDoc(doc(db, 'settings', 'app'), { logoUrl: logoPreview }, { merge: true });
+            await setDoc(userDocRef(userId, 'settings', 'app'), { logoUrl: logoPreview }, { merge: true });
             notify('success', 'Logomarca atualizada com sucesso!');
             setLogoFile(null);
         } catch (error) {
@@ -143,9 +140,14 @@ const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userPro
         if (!logoPreview) {
             return;
         }
+        if (!userId) {
+            notify('error', 'Sessao expirada. FaÁa login novamente.');
+            return;
+        }
+
         setIsRemovingLogo(true);
         try {
-            await setDoc(doc(db, 'settings', 'app'), { logoUrl: '' }, { merge: true });
+            await setDoc(userDocRef(userId, 'settings', 'app'), { logoUrl: '' }, { merge: true });
             notify('success', 'Logomarca removida.');
             setLogoPreview('');
             setLogoFile(null);
@@ -174,9 +176,13 @@ const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userPro
 
     const handleSaveCompany = async event => {
         event.preventDefault();
+        if (!userId) {
+            notify('error', 'Sessao expirada. FaÁa login novamente.');
+            return;
+        }
         setIsSavingCompany(true);
         try {
-            await setDoc(doc(db, 'settings', 'app'), companyData, { merge: true });
+            await setDoc(userDocRef(userId, 'settings', 'app'), companyData, { merge: true });
             notify('success', 'Dados da empresa atualizados com sucesso!');
         } catch (error) {
             console.error('Erro ao atualizar dados da empresa:', error);
@@ -189,13 +195,17 @@ const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userPro
     const handleSavePersonal = async event => {
         event.preventDefault();
         if (!currentUser) {
-            notify('error', 'Usu√°rio n√£o autenticado.');
+            notify('error', 'Usuario nao autenticado.');
+            return;
+        }
+        if (!userId) {
+            notify('error', 'Sessao expirada. FaÁa login novamente.');
             return;
         }
         setIsSavingPersonal(true);
         try {
             await setDoc(
-                doc(db, 'users', currentUser.uid),
+                userDocRef(userId),
                 {
                     fullName: personalData.fullName.trim(),
                     birthDate: personalData.birthDate,
@@ -490,3 +500,10 @@ const Configuracoes = ({ appSettings = {}, setNotification, currentUser, userPro
 };
 
 export default Configuracoes;
+
+
+
+
+
+
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -207,7 +207,7 @@ const RelatorioRepasses = ({ transactions, professionals }) => {
     );
 };
 
-const Financeiro = ({ transactions, professionals, setNotification }) => {
+const Financeiro = ({ userId, transactions, professionals, setNotification }) => {
     const [activeTab, setActiveTab] = useState('geral');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [transactionType, setTransactionType] = useState('receita');
@@ -225,6 +225,10 @@ const Financeiro = ({ transactions, professionals, setNotification }) => {
     };
 
     const handleSaveManualTransaction = async data => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return false;
+        }
         try {
             const amount = parseFloat(data.amount);
             if (!Number.isFinite(amount) || amount <= 0) {
@@ -243,10 +247,10 @@ const Financeiro = ({ transactions, professionals, setNotification }) => {
             };
 
             if (editingTransaction) {
-                await updateDoc(doc(db, 'transactions', editingTransaction.id), transactionData);
+                await updateDoc(userDocRef(userId, 'transactions', editingTransaction.id), transactionData);
                 setNotification({ type: 'success', message: 'Lançamento atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, 'transactions'), transactionData);
+                await addDoc(userCollectionRef(userId, 'transactions'), transactionData);
                 setNotification({ type: 'success', message: 'Lançamento registrado com sucesso!' });
             }
 
@@ -266,8 +270,12 @@ const Financeiro = ({ transactions, professionals, setNotification }) => {
 
     const handleDeleteTransaction = async transaction => {
         if (!transaction.id) return;
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return;
+        }
         try {
-            await deleteDoc(doc(db, 'transactions', transaction.id));
+            await deleteDoc(userDocRef(userId, 'transactions', transaction.id));
             setNotification({ type: 'success', message: 'Lançamento removido com sucesso.' });
         } catch (error) {
             console.error('Erro ao excluir lançamento:', error);
@@ -311,3 +319,4 @@ const Financeiro = ({ transactions, professionals, setNotification }) => {
 };
 
 export default Financeiro;
+

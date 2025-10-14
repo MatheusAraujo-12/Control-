@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, getDocs, doc, setDoc } from 'firebase/firestore';
-import { db, auth, onAuthStateChanged, signOut } from './firebase';
+import { onSnapshot } from 'firebase/firestore';
+import { auth, onAuthStateChanged, signOut, userCollectionRef, userDocRef } from './firebase';
 
 import Dashboard from './components/Dashboard';
 import Clientes from './components/Clientes';
@@ -142,42 +142,7 @@ const normalizeYardVehicle = vehicle => ({
     appointmentId: vehicle.appointmentId || '',
 });
 
-const legacyCollections = [
-    { source: 'demo_clients', target: 'clients' },
-    { source: 'demo_professionals', target: 'professionals' },
-    { source: 'demo_services', target: 'services' },
-    { source: 'demo_appointments', target: 'appointments' },
-    { source: 'demo_transactions', target: 'transactions' },
-    { source: 'demo_yard', target: 'yard' },
-];
-
 export default function App() {
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            return;
-        }
-        if (sessionStorage.getItem('legacyMigrationDone')) {
-            return;
-        }
-        const migrateLegacyCollections = async () => {
-            try {
-                for (const { source, target } of legacyCollections) {
-                    const sourceSnapshot = await getDocs(collection(db, source));
-                    if (sourceSnapshot.empty) {
-                        continue;
-                    }
-                    await Promise.all(sourceSnapshot.docs.map((docSnapshot) => setDoc(doc(db, target, docSnapshot.id), docSnapshot.data(), { merge: true })));
-                }
-                sessionStorage.setItem('legacyMigrationDone', '1');
-            } catch (migrationError) {
-                console.error('Erro ao migrar dados legados:', migrationError);
-            }
-        };
-
-        migrateLegacyCollections();
-    }, []);
-
-
     const [activePage, setActivePage] = useState('dashboard');
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -204,6 +169,17 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
 
     useEffect(() => {
+        if (!currentUser) {
+            setClients([]);
+            setProfessionals([]);
+            setServices([]);
+            setAppointments([]);
+            setTransactions([]);
+            setBudgets([]);
+            setYardVehicles([]);
+            return undefined;
+        }
+
         const collectionsToWatch = [
             { name: 'clients', setter: setClients, normalizer: normalizeClient },
             { name: 'professionals', setter: setProfessionals, normalizer: normalizeProfessional },
@@ -214,19 +190,39 @@ export default function App() {
             { name: 'yard', setter: setYardVehicles, normalizer: normalizeYardVehicle },
         ];
 
-        const unsubscribers = collectionsToWatch.map(({ name, setter, normalizer }) =>
-            onSnapshot(
-                collection(db, name),
-                snapshot => setter(snapshot.docs.map(docSnapshot => normalizer({ id: docSnapshot.id, ...docSnapshot.data() }))),
-                error => console.error(`Erro ao buscar ${name}: `, error)
-            )
-        );
+        const unsubscribers = collectionsToWatch.map(({ name, setter, normalizer }) => {
+            try {
+                const collectionRef = userCollectionRef(currentUser.uid, name);
+                return onSnapshot(
+                    collectionRef,
+                    snapshot => setter(snapshot.docs.map(docSnapshot => normalizer({ id: docSnapshot.id, ...docSnapshot.data() }))),
+                    error => console.error(`Erro ao buscar ${name}: `, error)
+                );
+            } catch (error) {
+                console.error(`Erro ao inicializar listener de ${name}:`, error);
+                setter([]);
+                return () => {};
+            }
+        });
 
         return () => unsubscribers.forEach(unsub => unsub());
-    }, []);
+    }, [currentUser]);
 
     useEffect(() => {
-        const settingsRef = doc(db, 'settings', 'app');
+        if (!currentUser) {
+            setAppSettings({
+                logoUrl: '',
+                companyName: '',
+                companyEmail: '',
+                companyPhone: '',
+                companyDocument: '',
+                companyAddress: '',
+                companyWebsite: '',
+            });
+            return undefined;
+        }
+
+        const settingsRef = userDocRef(currentUser.uid, 'settings', 'app');
         const unsubscribe = onSnapshot(
             settingsRef,
             snapshot => {
@@ -259,7 +255,7 @@ export default function App() {
         );
 
         return () => unsubscribe();
-    }, []);
+    }, [currentUser]);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, user => {
@@ -280,9 +276,8 @@ export default function App() {
             return;
         }
 
-        const userDocRef = doc(db, 'users', currentUser.uid);
         const unsubscribe = onSnapshot(
-            userDocRef,
+            userDocRef(currentUser.uid),
             snapshot => {
                 if (!snapshot.exists()) {
                     setUserProfile(null);
@@ -443,14 +438,15 @@ export default function App() {
             case 'dashboard':
                 return <Dashboard setActivePage={setActivePage} stats={dashboardStats} isDarkMode={isDarkMode} />;
             case 'clientes':
-                return <Clientes clients={clients} setNotification={notify} />;
+                return <Clientes userId={currentUser?.uid} clients={clients} setNotification={notify} />;
             case 'profissionais':
-                return <Profissionais professionals={professionals} setNotification={notify} />;
+                return <Profissionais userId={currentUser?.uid} professionals={professionals} setNotification={notify} />;
             case 'servicos':
-                return <Servicos services={services} setNotification={notify} />;
+                return <Servicos userId={currentUser?.uid} services={services} setNotification={notify} />;
             case 'agenda':
                 return (
                     <Agenda
+                        userId={currentUser?.uid}
                         appointments={appointments}
                         professionals={professionals}
                         clients={clients}
@@ -461,6 +457,7 @@ export default function App() {
             case 'orcamentos':
                 return (
                     <Orcamentos
+                        userId={currentUser?.uid}
                         budgets={budgets}
                         clients={clients}
                         services={services}
@@ -469,12 +466,13 @@ export default function App() {
                     />
                 );
             case 'financeiro':
-                return <Financeiro transactions={transactions} professionals={professionals} setNotification={notify} />;
+                return <Financeiro userId={currentUser?.uid} transactions={transactions} professionals={professionals} setNotification={notify} />;
             case 'patio':
-                return <Patio vehicles={yardVehicles} professionals={professionals} clients={clients} setNotification={notify} />;
+                return <Patio userId={currentUser?.uid} vehicles={yardVehicles} professionals={professionals} clients={clients} setNotification={notify} />;
             case 'configuracoes':
                 return (
                     <Configuracoes
+                        userId={currentUser?.uid}
                         appSettings={appSettings}
                         setNotification={notify}
                         currentUser={currentUser}

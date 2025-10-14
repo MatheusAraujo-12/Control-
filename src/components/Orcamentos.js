@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { Button } from './ui/Button';
@@ -75,7 +75,7 @@ const getNextBudgetNumber = (existingBudgets = []) => {
     const next = numbers.length ? Math.max(...numbers) + 1 : 1;
     return String(next).padStart(6, '0');
 };
-const Orcamentos = ({ budgets = [], clients = [], services = [], appSettings = {}, setNotification }) => {
+const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSettings = {}, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, id: null });
     const [currentBudget, setCurrentBudget] = useState(null);
@@ -224,6 +224,11 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], appSettings = {
     const handleSubmit = async event => {
         event.preventDefault();
 
+        if (!userId) {
+            setNotification?.({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return;
+        }
+
         if (!formData.clientName.trim()) {
             setNotification?.({ type: 'error', message: 'Informe o nome do cliente.' });
             return;
@@ -276,14 +281,14 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], appSettings = {
 
         try {
             if (currentBudget) {
-                await updateDoc(doc(db, 'budgets', currentBudget.id), {
+                await updateDoc(userDocRef(userId, 'budgets', currentBudget.id), {
                     ...payload,
                     budgetNumber: currentBudget.budgetNumber || '',
                 });
                 setNotification?.({ type: 'success', message: 'Orçamento atualizado com sucesso!' });
             } else {
                 const budgetNumber = getNextBudgetNumber(budgets);
-                await addDoc(collection(db, 'budgets'), {
+                await addDoc(userCollectionRef(userId, 'budgets'), {
                     ...payload,
                     budgetNumber,
                     createdAt: serverTimestamp(),
@@ -305,8 +310,12 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], appSettings = {
         if (!confirmDelete.id) {
             return;
         }
+        if (!userId) {
+            setNotification?.({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            return;
+        }
         try {
-            await deleteDoc(doc(db, 'budgets', confirmDelete.id));
+            await deleteDoc(userDocRef(userId, 'budgets', confirmDelete.id));
             setNotification?.({ type: 'success', message: 'Orçamento removido com sucesso.' });
         } catch (error) {
             console.error('Erro ao remover orçamento:', error);
@@ -734,3 +743,5 @@ const Orcamentos = ({ budgets = [], clients = [], services = [], appSettings = {
 };
 
 export default Orcamentos;
+
+
