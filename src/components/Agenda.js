@@ -22,6 +22,8 @@ const statusColors = {
     finalizado: 'bg-green-200 border-green-500 text-green-800',
 };
 
+const getStatusLabel = status => statusOptions.find(option => option.value === status)?.label || 'Agendado';
+
 const CheckoutModal = ({ isOpen, onClose, appointment, onProcess }) => {
     const [partsCost, setPartsCost] = useState(0);
     const [paymentMethod, setPaymentMethod] = useState('pix');
@@ -338,17 +340,58 @@ const Agenda = ({ userId, appointments, professionals, clients, services, setNot
         });
     }, [appointments, currentDate]);
 
+    const professionalsMap = useMemo(() => {
+        const map = new Map();
+        professionals.forEach(professional => {
+            if (professional?.id) {
+                map.set(professional.id, professional);
+            }
+        });
+        return map;
+    }, [professionals]);
+
+    const sortedMobileAppointments = useMemo(
+        () => [...filteredAppointments].sort((a, b) => new Date(a.date) - new Date(b.date)),
+        [filteredAppointments]
+    );
+
     return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Agenda da oficina</h1>
-                <div className="flex items-center gap-4">
-                    <Button variant="secondary" onClick={() => setCurrentDate(prev => new Date(prev.getTime() - 86400000))}>Dia anterior</Button>
-                    <div className="text-lg font-semibold">{currentDate.toLocaleDateString('pt-BR')}</div>
-                    <Button variant="secondary" onClick={() => setCurrentDate(prev => new Date(prev.getTime() + 86400000))}>Próximo dia</Button>
+        <div className="space-y-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Agenda da oficina</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Navegue pelos dias e toque em um horario para gerenciar os agendamentos.</p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 md:justify-end md:w-auto w-full">
+                    <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end w-full sm:w-auto">
+                        <Button
+                            variant="secondary"
+                            className="flex-1 min-w-[130px] sm:flex-none"
+                            onClick={() => setCurrentDate(prev => new Date(prev.getTime() - 86400000))}
+                        >
+                            Dia anterior
+                        </Button>
+                        <div className="px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center font-semibold text-sm text-gray-700 dark:text-gray-200 flex-1 min-w-[150px] sm:flex-none">
+                            {currentDate.toLocaleDateString('pt-BR')}
+                        </div>
+                        <Button
+                            variant="secondary"
+                            className="flex-1 min-w-[130px] sm:flex-none"
+                            onClick={() => setCurrentDate(prev => new Date(prev.getTime() + 86400000))}
+                        >
+                            Proximo dia
+                        </Button>
+                    </div>
+                    <Button
+                        onClick={() => handleOpenModal()}
+                        icon={<Plus size={18} />}
+                        className="w-full sm:w-auto"
+                    >
+                        Novo agendamento
+                    </Button>
                 </div>
             </div>
-            <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+            <div className="hidden md:block overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg">
                 <div className="grid" style={{ gridTemplateColumns: `80px repeat(${professionals.length}, minmax(180px, 1fr))` }}>
                     <div className="sticky left-0 bg-gray-100 dark:bg-gray-900 z-10">
                         <div className="h-16 flex items-center justify-center border-b border-r border-gray-200 dark:border-gray-700"><Clock size={24} /></div>
@@ -398,6 +441,65 @@ const Agenda = ({ userId, appointments, professionals, clients, services, setNot
                     ))}
                 </div>
             </div>
+            <div className="space-y-4 md:hidden">
+                {sortedMobileAppointments.length === 0 ? (
+                    <p className="text-sm text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                        Nenhum agendamento para este dia.
+                    </p>
+                ) : (
+                    sortedMobileAppointments.map(appointment => {
+                        const appointmentDate = new Date(appointment.date);
+                        const professional = professionalsMap.get(appointment.professionalId);
+                        const statusClass = statusColors[appointment.status] || statusColors.agendado;
+                        const servicesList = appointment.services?.map(service => service.name).join(', ') || 'Sem servicos vinculados';
+                        const vehicleInfo = [appointment.vehicleBrand, appointment.vehicleModel, appointment.vehiclePlate].filter(Boolean).join(' ') || 'Veiculo nao informado';
+                        return (
+                            <div key={appointment.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{appointment.clientName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{professional?.name || 'Profissional nao definido'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                            {appointmentDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                            {appointmentDate.toLocaleDateString('pt-BR')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${statusClass}`}>
+                                        {getStatusLabel(appointment.status)}
+                                    </span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">{appointment.vehiclePlate || 'Sem placa'}</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                    <div>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Veiculo</span>
+                                        <span>{vehicleInfo}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Servicos</span>
+                                        <span>{servicesList}</span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        onClick={() => handleOpenModal(appointment)}
+                                        variant="secondary"
+                                        className="flex-1 min-w-[140px]"
+                                        icon={<ClipboardList size={16} />}
+                                    >
+                                        Ver detalhes
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
             <AppointmentModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
@@ -415,3 +517,4 @@ const Agenda = ({ userId, appointments, professionals, clients, services, setNot
 };
 
 export default Agenda;
+

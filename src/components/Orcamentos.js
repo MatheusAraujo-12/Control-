@@ -454,7 +454,7 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                 <Button onClick={openNewBudgetModal} icon={<Plus size={18} />}>Novo orçamento</Button>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hidden md:block">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
@@ -497,6 +497,62 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <div className="space-y-4 md:hidden">
+                {sortedBudgets.length === 0 ? (
+                    <p className="text-center text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md">
+                        Nenhum orAamento cadastrado atAc o momento.
+                    </p>
+                ) : (
+                    sortedBudgets.map(budget => {
+                        const statusStyle = STATUS_STYLES[budget.status] || STATUS_STYLES.draft;
+                        const statusLabel = STATUS_OPTIONS.find(option => option.value === budget.status)?.label || 'Rascunho';
+                        return (
+                            <div key={budget.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-3 border border-gray-200 dark:border-gray-700">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">OrAamento #{budget.budgetNumber || 'N/A'}</p>
+                                        <span className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusStyle}`}>{statusLabel}</span>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Total</p>
+                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(budget.total)}</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                    <div>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Cliente</span>
+                                        <span>{budget.clientName || 'Cliente nao informado'}</span>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Atualizado em</span>
+                                        <span>{formatDate(budget.updatedAt || budget.createdAt)}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Veiculo</span>
+                                        <span>{[budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).join(' ') || 'Nao informado'}</span>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Servicos</span>
+                                        <span>{budget.services?.length || 0}</span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                    <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" className="flex-1 min-w-[120px]" icon={<Edit3 size={16} />}>
+                                        Editar
+                                    </Button>
+                                    <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" className="flex-1 min-w-[120px]" icon={<Trash2 size={16} />}>
+                                        Excluir
+                                    </Button>
+                                    <Button onClick={() => handleGeneratePdf(budget)} variant="secondary" className="flex-1 min-w-[120px]" icon={<FileDown size={16} />}>
+                                        PDF
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
             </div>
 
             <Modal

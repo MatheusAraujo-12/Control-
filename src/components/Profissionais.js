@@ -92,12 +92,12 @@ const Profissionais = ({ userId, professionals, setNotification }) => {
     };
 
     return (
-        <div>
+        <div className="space-y-4">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold">Equipe tecnica</h1>
                 <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo tecnico</Button>
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hidden md:block">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
@@ -122,6 +122,25 @@ const Profissionais = ({ userId, professionals, setNotification }) => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+            <div className="space-y-4 md:hidden">
+                {professionals.map(prof => (
+                    <div key={prof.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{prof.name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{prof.email || 'Sem email'}</p>
+                            </div>
+                            <Button onClick={() => openModal(prof)} variant="secondary" className="px-3 py-1">
+                                <Edit size={16} />
+                            </Button>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                            <span className="block font-medium text-gray-500 dark:text-gray-400">Especialidade</span>
+                            <span>{prof.specialty || 'Nao informado'}</span>
+                        </div>
+                    </div>
+                ))}
             </div>
             <ProfessionalFormModal isOpen={isModalOpen} onClose={closeModal} professional={currentProfessional} onSave={handleSave} />
         </div>

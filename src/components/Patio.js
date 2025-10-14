@@ -4,7 +4,7 @@ import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Car, ClipboardList, MapPin, AlertTriangle, Clock, CheckCircle, Trash2, Calendar as CalendarIcon } from 'lucide-react';
+import { Car, ClipboardList, MapPin, AlertTriangle, Clock, CheckCircle, Trash2, Calendar as CalendarIcon, Plus } from 'lucide-react';
 
 const statusOptions = [
     { value: 'recebido', label: 'Recebido no patio' },
@@ -346,22 +346,28 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
     };
 
     return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
+        <div className="space-y-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold">Controle de patio</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Controle de patio</h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Organize os veiculos presentes na oficina e gere agendamentos automaticamente.</p>
                 </div>
-                <Button onClick={() => { setSelectedVehicle(null); setIsModalOpen(true); }}>Registrar entrada</Button>
+                <Button
+                    onClick={() => { setSelectedVehicle(null); setIsModalOpen(true); }}
+                    icon={<Plus size={18} />}
+                    className="w-full md:w-auto"
+                >
+                    Registrar entrada
+                </Button>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                         <h2 className="text-xl font-semibold">Veiculos no patio ({vehiclesOrdenados.length})</h2>
                         <span className="text-sm text-gray-500 dark:text-gray-400">Prioridade e permanencia</span>
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 dark:bg-gray-700">
                                 <tr>
@@ -413,6 +419,89 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="md:hidden border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                        {vehiclesOrdenados.length === 0 ? (
+                            <p className="text-sm text-center text-gray-500 dark:text-gray-400">Nenhum veiculo registrado no patio.</p>
+                        ) : (
+                            vehiclesOrdenados.map((vehicle) => {
+                                const statusLabel = statusOptions.find((option) => option.value === vehicle.status)?.label || vehicle.status;
+                                const priorityLabel = priorityOptions.find((option) => option.value === vehicle.priority)?.label || vehicle.priority;
+                                return (
+                                    <div key={vehicle.id} className="bg-white dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4 space-y-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                                    {[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veiculo sem descricao'}
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.clientName || 'Cliente nao informado'}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="font-mono text-sm text-gray-700 dark:text-gray-200">{vehicle.vehiclePlate || '--'}</span>
+                                                {vehicle.bay ? (
+                                                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Box {vehicle.bay}</p>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                                                {statusLabel}
+                                            </span>
+                                            <span
+                                                className={`inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold ${
+                                                    vehicle.priority === 'alta'
+                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                                                        : vehicle.priority === 'baixa'
+                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                                            : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                                }`}
+                                            >
+                                                {priorityLabel}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                            <div>
+                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Tecnico responsavel</span>
+                                                <span>{vehicle.professionalName || '--'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Agendamento</span>
+                                                <span>{vehicle.appointmentDate ? new Date(vehicle.appointmentDate).toLocaleString('pt-BR') : '--'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Entrada no patio</span>
+                                                <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button
+                                                variant="secondary"
+                                                className="flex-1 min-w-[120px]"
+                                                onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}
+                                            >
+                                                Editar
+                                            </Button>
+                                            <Button
+                                                variant="success"
+                                                className="flex-1 min-w-[120px]"
+                                                onClick={() => handleLiberarVeiculo(vehicle)}
+                                                icon={<CheckCircle size={16} />}
+                                            >
+                                                Liberar
+                                            </Button>
+                                            <Button
+                                                variant="danger"
+                                                className="flex-1 min-w-[120px]"
+                                                onClick={() => handleRemoverRegistro(vehicle)}
+                                                icon={<Trash2 size={16} />}
+                                            >
+                                                Remover
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </div>
 
@@ -468,7 +557,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Ultimos veiculos liberados para consulta rapida.</p>
                     </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
@@ -497,6 +586,33 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                             )}
                         </tbody>
                     </table>
+                </div>
+                <div className="md:hidden border-t border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                    {historico.length > 0 ? (
+                        historico.slice(-10).reverse().map((vehicle) => (
+                            <div key={vehicle.id} className="bg-white dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-2">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veiculo'}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.notes || 'Sem observacoes'}</p>
+                                    </div>
+                                    <span className="font-mono text-sm text-gray-700 dark:text-gray-200">{vehicle.vehiclePlate || '--'}</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                    <div>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Entrada</span>
+                                        <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Saida</span>
+                                        <span>{vehicle.exitTime ? new Date(vehicle.exitTime).toLocaleString('pt-BR') : '--'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-sm text-center text-gray-500 dark:text-gray-400">Nao ha historico de saidas.</p>
+                    )}
                 </div>
             </div>
 

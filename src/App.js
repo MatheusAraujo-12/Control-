@@ -524,7 +524,7 @@ export default function App() {
     ];
 
     return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex">
+        <div className="min-h-screen w-full bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex flex-col md:flex-row">
             {toastElement}
             {isSidebarOpen && <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={closeSidebarOnMobile} aria-hidden="true" />}
             <aside
@@ -552,9 +552,9 @@ export default function App() {
                     ))}
                 </nav>
             </aside>
-            <main className="flex-1 flex flex-col min-h-screen">
-                <header className="h-20 bg-white dark:bg-gray-800 shadow-md flex items-center justify-between px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center space-x-3">
+            <main className="flex-1 flex flex-col min-h-screen w-full overflow-x-hidden">
+                <header className="bg-white dark:bg-gray-800 shadow-md flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                         <button
                             type="button"
                             onClick={toggleSidebar}
@@ -568,7 +568,7 @@ export default function App() {
                             <p className="text-sm text-gray-500 dark:text-gray-400">Painel de gestão para oficinas mecânicas</p>
                         </div>
                     </div>
-                    <div className="flex items-center space-x-2 sm:space-x-3">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
                         {currentUser && (
                             <span className="hidden sm:inline text-sm text-gray-500 dark:text-gray-400">{currentUser.email}</span>
                         )}
@@ -580,8 +580,10 @@ export default function App() {
                         </Button>
                     </div>
                 </header>
-                <div className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-                    {renderPage()}
+                <div className="flex-1 overflow-y-auto">
+                    <div className="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-8 space-y-6">
+                        {renderPage()}
+                    </div>
                 </div>
             </main>
         </div>

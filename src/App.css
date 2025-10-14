@@ -69,3 +69,13 @@ body {
 .range-slider::-moz-range-thumb {
     background: #f59e0b;
 }
+
+body {
+    min-height: 100%;
+    overflow-x: hidden;
+}
+
+html,
+#root {
+    min-height: 100%;
+}

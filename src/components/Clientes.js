@@ -111,7 +111,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
                 <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Clientes e veiculos</h1>
                 <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo cliente</Button>
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hidden md:block">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
@@ -143,6 +143,51 @@ const Clientes = ({ userId, clients, setNotification }) => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+            <div className="space-y-4 md:hidden">
+                {clients.map(client => {
+                    const vehicle = [client.vehicleBrand, client.vehicleModel, client.vehicleYear].filter(Boolean).join(' ');
+                    let createdAtLabel = '--';
+                    if (client.createdAt) {
+                        const createdAtDate = typeof client.createdAt === 'object' && client.createdAt.seconds
+                            ? new Date(client.createdAt.seconds * 1000)
+                            : new Date(client.createdAt);
+                        if (!Number.isNaN(createdAtDate.getTime())) {
+                            createdAtLabel = createdAtDate.toLocaleDateString('pt-BR');
+                        }
+                    }
+                    return (
+                        <div key={client.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{client.name}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{client.email || 'Sem email'}</p>
+                                </div>
+                                <Button onClick={() => openModal(client)} variant="secondary" className="px-3 py-1">
+                                    <Edit size={16} />
+                                </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                <div>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Telefone</span>
+                                    <span>{client.phone}</span>
+                                </div>
+                                <div>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Veiculo</span>
+                                    <span>{vehicle || 'Nao informado'}</span>
+                                </div>
+                                <div>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Placa</span>
+                                    <span>{client.vehiclePlate || 'Sem placa'}</span>
+                                </div>
+                                <div>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Criado em</span>
+                                    <span>{createdAtLabel}</span>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
             <ClientFormModal isOpen={isModalOpen} onClose={closeModal} client={currentClient} onSave={handleSaveClient} />
         </div>

@@ -119,7 +119,7 @@ const Servicos = ({ userId, services, setNotification }) => {
                 <h1 className="text-3xl font-bold">Servicos da oficina</h1>
                 <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo servico</Button>
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hidden md:block">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
@@ -144,6 +144,40 @@ const Servicos = ({ userId, services, setNotification }) => {
                         ))}
                     </tbody>
                 </table>
+            </div>
+            <div className="space-y-4 md:hidden">
+                {services.map(service => (
+                    <div key={service.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-blue-600 dark:text-blue-400">{service.name}</h3>
+                            <Button onClick={() => openModal(service)} variant="secondary" className="px-3 py-1">
+                                <Edit size={16} />
+                            </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                            <div>
+                                <span className="block font-medium text-gray-500 dark:text-gray-400">Preco mao de obra</span>
+                                <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.price)}</span>
+                            </div>
+                            <div>
+                                <span className="block font-medium text-gray-500 dark:text-gray-400">Tempo estimado</span>
+                                <span>{service.duration} min</span>
+                            </div>
+                            <div>
+                                <span className="block font-medium text-gray-500 dark:text-gray-400">Repasse tecnico</span>
+                                <span>
+                                    {service.commissionType === 'percentage'
+                                        ? `${service.commissionValue}%`
+                                        : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.commissionValue)}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="block font-medium text-gray-500 dark:text-gray-400">Tipo de repasse</span>
+                                <span>{service.commissionType === 'percentage' ? 'Percentual' : 'Valor fixo'}</span>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
             <ServiceFormModal isOpen={isModalOpen} onClose={closeModal} service={currentService} onSave={handleSave} />
         </div>

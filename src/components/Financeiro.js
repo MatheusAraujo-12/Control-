@@ -43,14 +43,14 @@ const LancamentoManualModal = ({ isOpen, onClose, onSave, type, initialData }) =
     const isEditing = Boolean(initialData);
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Editar lançamento manual' : type === 'receita' ? 'Adicionar entrada manual' : 'Adicionar despesa manual'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Editar lanÃ§amento manual' : type === 'receita' ? 'Adicionar entrada manual' : 'Adicionar despesa manual'}>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <Input name="description" value={formData.description} onChange={handleChange} placeholder="Descrição (ex: venda de serviço, compra de peças)" icon={<FileText size={18} />} required />
+                <Input name="description" value={formData.description} onChange={handleChange} placeholder="DescriÃ§Ã£o (ex: venda de serviÃ§o, compra de peÃ§as)" icon={<FileText size={18} />} required />
                 <Input name="amount" type="number" step="0.01" value={formData.amount} onChange={handleChange} placeholder="Valor (R$)" icon={<DollarSign size={18} />} required />
                 <Input name="date" type="date" value={formData.date} onChange={handleChange} icon={<Calendar size={18} />} required />
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : isEditing ? 'Atualizar lançamento' : 'Salvar lançamento'}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : isEditing ? 'Atualizar lanÃ§amento' : 'Salvar lanÃ§amento'}</Button>
                 </div>
             </form>
         </Modal>
@@ -79,7 +79,7 @@ const RelatorioGeral = ({ transactions, onOpenModal, onEditTransaction, onDelete
         return { totalReceitas: receitas, totalDespesas: despesas, saldo: receitas - despesas, sortedTransactions: sorted };
     }, [transactions]);
 
-    const renderTipo = tipo => (tipo === 'receita' ? 'Entrada' : 'Saída');
+    const renderTipo = tipo => (tipo === 'receita' ? 'Entrada' : 'SaÃ­da');
 
     return (
         <div>
@@ -90,7 +90,7 @@ const RelatorioGeral = ({ transactions, onOpenModal, onEditTransaction, onDelete
                         <p className="text-2xl font-bold text-green-600">{formatCurrency(totalReceitas)}</p>
                     </div>
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Total de saídas</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Total de saÃ­das</p>
                         <p className="text-2xl font-bold text-red-600">{formatCurrency(totalDespesas)}</p>
                     </div>
                     <div>
@@ -104,19 +104,19 @@ const RelatorioGeral = ({ transactions, onOpenModal, onEditTransaction, onDelete
                 <Button onClick={() => onOpenModal('despesa')} icon={<ArrowDownCircle size={18} />} variant="danger">Adicionar despesa</Button>
             </Card>
             <Card>
-                <h2 className="text-xl font-bold mb-4">Movimentações da oficina</h2>
-                <div className="overflow-x-auto">
+                <h2 className="text-xl font-bold mb-4">MovimentaÃ§Ãµes da oficina</h2>
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th className="p-4 font-semibold">Data</th>
-                                <th className="p-4 font-semibold">Descrição</th>
+                                <th className="p-4 font-semibold">DescriÃ§Ã£o</th>
                                 <th className="p-4 font-semibold">Tipo</th>
                                 <th className="p-4 font-semibold">Forma de pagamento</th>
-                                <th className="p-4 font-semibold text-right">Mão de obra</th>
-                                <th className="p-4 font-semibold text-right">Peças</th>
+                                <th className="p-4 font-semibold text-right">MÃ£o de obra</th>
+                                <th className="p-4 font-semibold text-right">PeÃ§as</th>
                                 <th className="p-4 font-semibold text-right">Total</th>
-                                <th className="p-4 font-semibold text-right">Ações</th>
+                                <th className="p-4 font-semibold text-right">AÃ§Ãµes</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -126,7 +126,7 @@ const RelatorioGeral = ({ transactions, onOpenModal, onEditTransaction, onDelete
                                     return (
                                         <tr key={transaction.id || `${transaction.date}-${transaction.description}`}>
                                             <td className="p-4">{formatDate(transaction.date)}</td>
-                                            <td className="p-4">{transaction.description || transaction.services?.map(s => s.name).join(', ') || 'Sem descrição'}</td>
+                                            <td className="p-4">{transaction.description || transaction.services?.map(s => s.name).join(', ') || 'Sem descriÃ§Ã£o'}</td>
                                             <td className="p-4">{renderTipo(transaction.type)}</td>
                                             <td className="p-4">{transaction.paymentMethod ? transaction.paymentMethod.toUpperCase() : '--'}</td>
                                             <td className="p-4 text-right">{transaction.serviceAmount !== undefined ? formatCurrency(transaction.serviceAmount) : '--'}</td>
@@ -147,11 +147,57 @@ const RelatorioGeral = ({ transactions, onOpenModal, onEditTransaction, onDelete
                                 })
                             ) : (
                                 <tr>
-                                    <td className="p-4 text-center text-gray-500" colSpan={8}>Nenhuma movimentação registrada.</td>
+                                    <td className="p-4 text-center text-gray-500" colSpan={8}>Nenhuma movimentaÃ§Ã£o registrada.</td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
+                </div>
+                <div className="md:hidden space-y-3">
+                    {sortedTransactions.length > 0 ? (
+                        sortedTransactions.map(transaction => {
+                            const isManual = transaction.manual || (!transaction.appointmentId && !transaction.services?.length);
+                            return (
+                                <div key={transaction.id || `${transaction.date}-${transaction.description}`} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{renderTipo(transaction.type)}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(transaction.date)}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 dark:text-gray-300">{transaction.description || transaction.services?.map(s => s.name).join(', ') || 'Sem descricao'}</p>
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                        <div>
+                                            <span className="block font-medium">Pagamento</span>
+                                            <span>{transaction.paymentMethod ? transaction.paymentMethod.toUpperCase() : '--'}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="block font-medium">Total</span>
+                                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(transaction.totalAmount || transaction.amount)}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block font-medium">Mao de obra</span>
+                                            <span>{transaction.serviceAmount !== undefined ? formatCurrency(transaction.serviceAmount) : '--'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="block font-medium">Pecas</span>
+                                            <span>{transaction.partsCost !== undefined ? formatCurrency(transaction.partsCost) : '--'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        {isManual ? (
+                                            <>
+                                                <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => onEditTransaction(transaction)} icon={<Edit size={14} />}>Editar</Button>
+                                                <Button variant="danger" className="px-3 py-1 text-xs" onClick={() => onDeleteTransaction(transaction)} icon={<Trash2 size={14} />}>Excluir</Button>
+                                            </>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">Integrado</span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <p className="text-center text-sm text-gray-500">Nenhuma movimentacao registrada.</p>
+                    )}
                 </div>
             </Card>
         </div>
@@ -178,12 +224,12 @@ const RelatorioRepasses = ({ transactions, professionals }) => {
 
     return (
         <Card>
-            <h2 className="text-xl font-bold mb-4">Repasses por técnico</h2>
-            <div className="overflow-x-auto">
+            <h2 className="text-xl font-bold mb-4">Repasses por tÃ©cnico</h2>
+            <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            <th className="p-4 font-semibold">Técnico</th>
+                            <th className="p-4 font-semibold">TÃ©cnico</th>
                             <th className="p-4 font-semibold text-right">Total a pagar</th>
                         </tr>
                     </thead>
@@ -197,7 +243,7 @@ const RelatorioRepasses = ({ transactions, professionals }) => {
                             ))
                         ) : (
                             <tr>
-                                <td className="p-4 text-center text-gray-500" colSpan={2}>Nenhum repasse registrado até o momento.</td>
+                                <td className="p-4 text-center text-gray-500" colSpan={2}>Nenhum repasse registrado atÃ© o momento.</td>
                             </tr>
                         )}
                     </tbody>
@@ -226,7 +272,7 @@ const Financeiro = ({ userId, transactions, professionals, setNotification }) =>
 
     const handleSaveManualTransaction = async data => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessao expirada. FaÃ§a login novamente.' });
             return false;
         }
         try {
@@ -248,16 +294,16 @@ const Financeiro = ({ userId, transactions, professionals, setNotification }) =>
 
             if (editingTransaction) {
                 await updateDoc(userDocRef(userId, 'transactions', editingTransaction.id), transactionData);
-                setNotification({ type: 'success', message: 'Lançamento atualizado com sucesso!' });
+                setNotification({ type: 'success', message: 'LanÃ§amento atualizado com sucesso!' });
             } else {
                 await addDoc(userCollectionRef(userId, 'transactions'), transactionData);
-                setNotification({ type: 'success', message: 'Lançamento registrado com sucesso!' });
+                setNotification({ type: 'success', message: 'LanÃ§amento registrado com sucesso!' });
             }
 
             return true;
         } catch (error) {
-            console.error('Erro ao salvar lançamento manual:', error);
-            setNotification({ type: 'error', message: 'Não foi possível registrar o lançamento.' });
+            console.error('Erro ao salvar lanÃ§amento manual:', error);
+            setNotification({ type: 'error', message: 'NÃ£o foi possÃ­vel registrar o lanÃ§amento.' });
             return false;
         }
     };
@@ -271,15 +317,15 @@ const Financeiro = ({ userId, transactions, professionals, setNotification }) =>
     const handleDeleteTransaction = async transaction => {
         if (!transaction.id) return;
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessao expirada. FaÃ§a login novamente.' });
             return;
         }
         try {
             await deleteDoc(userDocRef(userId, 'transactions', transaction.id));
-            setNotification({ type: 'success', message: 'Lançamento removido com sucesso.' });
+            setNotification({ type: 'success', message: 'LanÃ§amento removido com sucesso.' });
         } catch (error) {
-            console.error('Erro ao excluir lançamento:', error);
-            setNotification({ type: 'error', message: 'Não foi possível excluir o lançamento.' });
+            console.error('Erro ao excluir lanÃ§amento:', error);
+            setNotification({ type: 'error', message: 'NÃ£o foi possÃ­vel excluir o lanÃ§amento.' });
         }
     };
 
@@ -319,4 +365,9 @@ const Financeiro = ({ userId, transactions, professionals, setNotification }) =>
 };
 
 export default Financeiro;
+
+
+
+
+
 
