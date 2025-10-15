@@ -107,7 +107,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                         name="clientId"
                         value={formData.clientId}
                         onChange={handleClientChange}
-                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700"
+                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200"
                         required
                     >
                         <option value="">Selecione um cliente</option>
@@ -128,7 +128,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium">Status</label>
-                        <select name="status" value={formData.status} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
+                        <select name="status" value={formData.status} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                             {statusOptions.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -138,7 +138,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                     </div>
                     <div>
                         <label className="block text-sm font-medium">Prioridade</label>
-                        <select name="priority" value={formData.priority} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
+                        <select name="priority" value={formData.priority} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                             {priorityOptions.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -153,7 +153,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                         name="professionalId"
                         value={formData.professionalId}
                         onChange={handleProfessionalChange}
-                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700"
+                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200"
                         required
                     >
                         <option value="">Selecione um técnico</option>

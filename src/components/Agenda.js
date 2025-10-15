@@ -55,7 +55,7 @@ const CheckoutModal = ({ isOpen, onClose, appointment, onProcess }) => {
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Forma de pagamento</label>
-                    <select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
+                    <select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                         <option value="pix">PIX</option>
                         <option value="dinheiro">Dinheiro</option>
                         <option value="credito">Cartão de crédito</option>
@@ -208,13 +208,13 @@ const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, profe
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={appointment ? 'Detalhes da ordem de serviço' : 'Novo agendamento'}>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <select name="clientId" value={formData.clientId || ''} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg">
+                <select name="clientId" value={formData.clientId || ''} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                     <option value="">Selecione um cliente</option>
                     {clients.map(client => (
                         <option key={client.id} value={client.id}>{client.name}</option>
                     ))}
                 </select>
-                <select name="professionalId" value={formData.professionalId || ''} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg">
+                <select name="professionalId" value={formData.professionalId || ''} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                     <option value="">Selecione um técnico</option>
                     {professionals.map(professional => (
                         <option key={professional.id} value={professional.id}>{professional.name}</option>
@@ -223,7 +223,7 @@ const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, profe
                 <Input type="datetime-local" name="date" value={formData.date ? new Date(formData.date).toISOString().substring(0, 16) : ''} onChange={handleChange} icon={<CalendarIcon size={18} />} />
                 <div>
                     <label className="block text-sm font-medium">Status da ordem</label>
-                    <select name="status" value={formData.status} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
+                    <select name="status" value={formData.status} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                         {statusOptions.map(status => (
                             <option key={status.value} value={status.value}>{status.label}</option>
                         ))}
@@ -239,7 +239,7 @@ const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, profe
                 <div>
                     <label className="block text-sm font-medium">Serviços</label>
                     <div className="flex gap-2">
-                        <select onChange={event => addService(event.target.value)} className="w-full mt-1 p-2 border rounded-lg">
+                        <select onChange={event => addService(event.target.value)} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                             <option value="">Adicionar serviço...</option>
                             {services.map(service => (
                                 <option key={service.id} value={service.id}>{service.name} - R$ {service.price}</option>

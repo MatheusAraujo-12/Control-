@@ -45,12 +45,12 @@ const ServiceFormModal = ({ isOpen, onClose, service, onSave }) => {
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={service ? 'Editar serviço da oficina' : 'Novo serviço'}>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do serviço (ex: troca de Ã³leo)" icon={<Wrench size={18} />} required />
-                <Input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="PreÃ§o mÃ£o de obra (R$)" icon={<DollarSign size={18} />} required />
+                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do serviço (ex: troca de óleo)" icon={<Wrench size={18} />} required />
+                <Input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="Preço mão de obra (R$)" icon={<DollarSign size={18} />} required />
                 <Input name="duration" type="number" value={formData.duration} onChange={handleChange} placeholder="Tempo estimado (min)" icon={<Clock size={18} />} required />
                 <div>
-                    <label className="block text-sm font-medium">Tipo de repasse para o tÃ©cnico</label>
-                    <select name="commissionType" value={formData.commissionType} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
+                    <label className="block text-sm font-medium">Tipo de repasse para o técnico</label>
+                    <select name="commissionType" value={formData.commissionType} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                         <option value="percentage">Percentual (%)</option>
                         <option value="fixed">Valor fixo (R$)</option>
                     </select>
@@ -81,7 +81,7 @@ const Servicos = ({ userId, services, setNotification }) => {
 
     const handleSave = async data => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return false;
         }
         try {
@@ -93,7 +93,7 @@ const Servicos = ({ userId, services, setNotification }) => {
             };
 
             if ([serviceData.price, serviceData.commissionValue, serviceData.duration].some(value => Number.isNaN(value))) {
-                setNotification({ type: 'error', message: 'Preencha valores numéricos vélidos.' });
+                setNotification({ type: 'error', message: 'Preencha valores numéricos válidos.' });
                 return false;
             }
 
@@ -108,7 +108,7 @@ const Servicos = ({ userId, services, setNotification }) => {
         } catch (error) {
             console.error('Erro ao salvar serviço:', error);
             const extra = error && error.code ? ` (${error.code})` : '';
-            setNotification({ type: 'error', message: `Não foi possível salvar o serviço${extra}.` });
+            setNotification({ type: 'error', message: `Não foi possível salvar o serviços ${extra}.` });
             return false;
         }
     };
