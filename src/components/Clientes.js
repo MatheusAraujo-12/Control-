@@ -121,7 +121,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
                                 <th className="p-4 font-semibold">E-mail</th>
                                 <th className="p-4 font-semibold">Veiculo</th>
                                 <th className="p-4 font-semibold">Placa</th>
-                                <th className="p-4 font-semibold">Acoes</th>
+                                <th className="p-4 font-semibold">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -132,7 +132,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
                                         <td className="p-4">{client.name}</td>
                                         <td className="p-4">{client.phone}</td>
                                         <td className="p-4">{client.email}</td>
-                                <td className="p-4">{vehicle || 'Nao informado'}</td>
+                                <td className="p-4">{vehicle || 'Não informado'}</td>
                                 <td className="p-4">{client.vehiclePlate || 'Sem placa'}</td>
                                         <td className="p-4">
                                             <Button onClick={() => openModal(client)} variant="secondary"><Edit size={16} /></Button>
@@ -173,7 +173,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
                                     <span>{client.phone}</span>
                                 </div>
                                 <div>
-                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Veiculo</span>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Veículo</span>
                                     <span>{vehicle || 'Nao informado'}</span>
                                 </div>
                                 <div>

@@ -83,7 +83,7 @@ export {
     signInWithEmailAndPassword,
     updateProfile,
     setDoc,
-    updatePassword,
+    updatePassword, 
     reauthenticateWithCredential,
     EmailAuthProvider,
     userCollectionRef,

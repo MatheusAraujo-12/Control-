@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
@@ -378,7 +378,7 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
         cursorY += 10;
 
         if (budget.services?.length) {
-            pdf.autoTable({
+            autoTable(pdf, {
                 startY: cursorY,
                 head: [['Servico', 'Valor']],
                 body: budget.services.map(service => [service.name, formatCurrency(service.price)]),
@@ -388,11 +388,12 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                 headStyles: { fillColor: [37, 99, 235] },
                 margin: { left: marginLeft, right: marginLeft },
             });
-            cursorY = pdf.previousAutoTable.finalY + 20;
+            const servicesTableY = pdf.lastAutoTable?.finalY ?? cursorY;
+            cursorY = servicesTableY + 20;
         }
 
         if (budget.parts?.length) {
-            pdf.autoTable({
+            autoTable(pdf, {
                 startY: cursorY,
                 head: [['Peca', 'Qtd.', 'Valor unitario', 'Total']],
                 body: budget.parts.map(part => [
@@ -411,7 +412,8 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                 headStyles: { fillColor: [37, 99, 235] },
                 margin: { left: marginLeft, right: marginLeft },
             });
-            cursorY = pdf.previousAutoTable.finalY + 20;
+            const partsTableY = pdf.lastAutoTable?.finalY ?? cursorY;
+            cursorY = partsTableY + 20;
         }
 
         pdf.setFontSize(12);

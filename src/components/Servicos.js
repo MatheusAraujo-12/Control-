@@ -36,20 +36,20 @@ const ServiceFormModal = ({ isOpen, onClose, service, onSave }) => {
                 onClose();
             }
         } catch (error) {
-            console.error("Erro ao submeter servico:", error);
+            console.error('Erro ao submeter serviço:', error);
         } finally {
             setIsSaving(false);
         }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={service ? 'Editar servico da oficina' : 'Novo servico'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={service ? 'Editar serviço da oficina' : 'Novo serviço'}>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do servico (ex: troca de oleo)" icon={<Wrench size={18} />} required />
-                <Input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="Preco mao de obra (R$)" icon={<DollarSign size={18} />} required />
+                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do serviço (ex: troca de Ã³leo)" icon={<Wrench size={18} />} required />
+                <Input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="PreÃ§o mÃ£o de obra (R$)" icon={<DollarSign size={18} />} required />
                 <Input name="duration" type="number" value={formData.duration} onChange={handleChange} placeholder="Tempo estimado (min)" icon={<Clock size={18} />} required />
                 <div>
-                    <label className="block text-sm font-medium">Tipo de repasse para o tecnico</label>
+                    <label className="block text-sm font-medium">Tipo de repasse para o tÃ©cnico</label>
                     <select name="commissionType" value={formData.commissionType} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700">
                         <option value="percentage">Percentual (%)</option>
                         <option value="fixed">Valor fixo (R$)</option>
@@ -58,7 +58,7 @@ const ServiceFormModal = ({ isOpen, onClose, service, onSave }) => {
                 <Input name="commissionValue" type="number" step="0.01" value={formData.commissionValue} onChange={handleChange} placeholder="Valor do repasse" icon={<Coins size={18} />} required />
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar servico'}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar serviço'}</Button>
                 </div>
             </form>
         </Modal>
@@ -93,22 +93,22 @@ const Servicos = ({ userId, services, setNotification }) => {
             };
 
             if ([serviceData.price, serviceData.commissionValue, serviceData.duration].some(value => Number.isNaN(value))) {
-                setNotification({ type: 'error', message: 'Preencha valores numericos validos.' });
+                setNotification({ type: 'error', message: 'Preencha valores numéricos vélidos.' });
                 return false;
             }
 
             if (currentService) {
                 await updateDoc(userDocRef(userId, 'services', currentService.id), serviceData);
-                setNotification({ type: 'success', message: 'Servico atualizado com sucesso!' });
+                setNotification({ type: 'success', message: 'Serviço atualizado com sucesso!' });
             } else {
                 await addDoc(userCollectionRef(userId, 'services'), serviceData);
-                setNotification({ type: 'success', message: 'Servico cadastrado com sucesso!' });
+                setNotification({ type: 'success', message: 'Serviço cadastrado com sucesso!' });
             }
             return true;
         } catch (error) {
-            console.error('Erro ao salvar servico:', error);
+            console.error('Erro ao salvar serviço:', error);
             const extra = error && error.code ? ` (${error.code})` : '';
-            setNotification({ type: 'error', message: `Nao foi possivel salvar o servico${extra}.` });
+            setNotification({ type: 'error', message: `Não foi possível salvar o serviço${extra}.` });
             return false;
         }
     };
@@ -116,18 +116,18 @@ const Servicos = ({ userId, services, setNotification }) => {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Servicos da oficina</h1>
-                <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo servico</Button>
+                <h1 className="text-3xl font-bold">Serviços da oficina</h1>
+                <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo serviço</Button>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hidden md:block">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            <th className="p-4 font-semibold">Servico</th>
-                            <th className="p-4 font-semibold">Preco mao de obra</th>
-                            <th className="p-4 font-semibold">Repasse tecnico</th>
+                            <th className="p-4 font-semibold">Serviço</th>
+                            <th className="p-4 font-semibold">Preço mão de obra</th>
+                            <th className="p-4 font-semibold">Comissão</th>
                             <th className="p-4 font-semibold">Tempo (min)</th>
-                            <th className="p-4 font-semibold">Acoes</th>
+                            <th className="p-4 font-semibold">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -156,7 +156,7 @@ const Servicos = ({ userId, services, setNotification }) => {
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
                             <div>
-                                <span className="block font-medium text-gray-500 dark:text-gray-400">Preco mao de obra</span>
+                                <span className="block font-medium text-gray-500 dark:text-gray-400">Preço mão de obra</span>
                                 <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.price)}</span>
                             </div>
                             <div>
@@ -164,7 +164,7 @@ const Servicos = ({ userId, services, setNotification }) => {
                                 <span>{service.duration} min</span>
                             </div>
                             <div>
-                                <span className="block font-medium text-gray-500 dark:text-gray-400">Repasse tecnico</span>
+                                <span className="block font-medium text-gray-500 dark:text-gray-400">Comissão</span>
                                 <span>
                                     {service.commissionType === 'percentage'
                                         ? `${service.commissionValue}%`
