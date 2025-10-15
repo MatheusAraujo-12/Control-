@@ -7,10 +7,10 @@ import { Input } from './ui/Input';
 import { Car, ClipboardList, MapPin, AlertTriangle, Clock, CheckCircle, Trash2, Calendar as CalendarIcon, Plus } from 'lucide-react';
 
 const statusOptions = [
-    { value: 'recebido', label: 'Recebido no patio' },
+    { value: 'recebido', label: 'Recebido no pátio' },
     { value: 'diagnostico', label: 'Em diagnostico' },
-    { value: 'aguardando_pecas', label: 'Aguardando pecas' },
-    { value: 'manutencao', label: 'Em manutencao' },
+    { value: 'aguardando_peças', label: 'Aguardando pecas' },
+    { value: 'manutenção', label: 'Em manutenção' },
     { value: 'lavagem', label: 'Em lavagem' },
     { value: 'liberado', label: 'Liberado para entrega' },
 ];
@@ -99,7 +99,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={vehicle ? 'Editar veiculo no patio' : 'Registrar entrada no patio'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={vehicle ? 'Editar veiculo no pátio' : 'Registrar entrada no pátio'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium">Cliente</label>
@@ -148,7 +148,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                     </div>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium">Tecnico responsavel</label>
+                    <label className="block text-sm font-medium">Técnico responsável</label>
                     <select
                         name="professionalId"
                         value={formData.professionalId}
@@ -156,7 +156,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                         className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700"
                         required
                     >
-                        <option value="">Selecione um tecnico</option>
+                        <option value="">Selecione um técnico</option>
                         {professionals.map((professional) => (
                             <option key={professional.id} value={professional.id}>
                                 {professional.name}
@@ -181,14 +181,14 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                     icon={<Clock size={18} />}
                 />
                 <div>
-                    <label className="block text-sm font-medium">Observacoes</label>
+                    <label className="block text-sm font-medium">Observações</label>
                     <textarea
                         name="notes"
                         value={formData.notes}
                         onChange={handleChange}
                         className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700"
                         rows={3}
-                        placeholder="Anote aprovacoes, pendencias de pecas ou solicitacoes do cliente"
+                        placeholder="Anote aprovações, pendências de peças ou solicitações do cliente"
                     ></textarea>
                 </div>
                 <div className="flex justify-end gap-3">
@@ -232,13 +232,13 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
 
     const handleSaveVehicle = async (data) => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return;
         }
         try {
             const appointmentIso = toIsoOrNull(data.appointmentDate);
             if (!data.clientId || !data.professionalId || !appointmentIso) {
-                setNotification({ type: 'error', message: 'Selecione cliente, tecnico e informe um horario valido.' });
+                setNotification({ type: 'error', message: 'Selecione cliente, técnico e informe um horério válido.' });
                 return;
             }
 
@@ -301,16 +301,16 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
 
             setIsModalOpen(false);
             setSelectedVehicle(null);
-            setNotification({ type: 'success', message: 'Veiculo registrado e agendamento criado!' });
+            setNotification({ type: 'success', message: 'Veículo registrado e agendamento criado!' });
         } catch (error) {
-            console.error('Erro ao salvar registro do patio:', error);
-            setNotification({ type: 'error', message: 'Nao foi possivel salvar o registro.' });
+            console.error('Erro ao salvar registro do pátio:', error);
+            setNotification({ type: 'error', message: 'Não foi possível salvar o registro.' });
         }
     };
 
     const handleLiberarVeiculo = async (vehicle) => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return;
         }
         try {
@@ -318,7 +318,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                 status: 'liberado',
                 exitTime: new Date().toISOString(),
             });
-            setNotification({ type: 'success', message: 'Veiculo liberado com sucesso!' });
+            setNotification({ type: 'success', message: 'Veículo liberado com sucesso!' });
 
             if (vehicle.appointmentId) {
 
@@ -326,22 +326,22 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
 
             }
         } catch (error) {
-            console.error('Erro ao liberar veiculo:', error);
-            setNotification({ type: 'error', message: 'Nao foi possivel liberar o veiculo.' });
+            console.error('Erro ao liberar veículo:', error);
+            setNotification({ type: 'error', message: 'Não foi possivel liberar o veículo.' });
         }
     };
 
     const handleRemoverRegistro = async (vehicle) => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return;
         }
         try {
             await deleteDoc(userDocRef(userId, 'yard', vehicle.id));
-            setNotification({ type: 'success', message: 'Registro removido do patio.' });
+            setNotification({ type: 'success', message: 'Registro removido do pátio.' });
         } catch (error) {
-            console.error('Erro ao remover registro do patio:', error);
-            setNotification({ type: 'error', message: 'Nao foi possivel remover o registro.' });
+            console.error('Erro ao remover registro do pátio:', error);
+            setNotification({ type: 'error', message: 'Não foi possível remover o registro.' });
         }
     };
 
@@ -349,8 +349,8 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
         <div className="space-y-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Controle de patio</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Organize os veiculos presentes na oficina e gere agendamentos automaticamente.</p>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Controle de pátio</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Organize os veículos presentes na oficina e gere agendamentos automaticamente.</p>
                 </div>
                 <Button
                     onClick={() => { setSelectedVehicle(null); setIsModalOpen(true); }}
@@ -364,22 +364,22 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                        <h2 className="text-xl font-semibold">Veiculos no patio ({vehiclesOrdenados.length})</h2>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">Prioridade e permanencia</span>
+                        <h2 className="text-xl font-semibold">Veículos no pátio ({vehiclesOrdenados.length})</h2>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">Prioridade e permanência</span>
                     </div>
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 dark:bg-gray-700">
                                 <tr>
-                                    <th className="p-4 font-semibold">Veiculo</th>
+                                    <th className="p-4 font-semibold">Veículo</th>
                                     <th className="p-4 font-semibold">Placa</th>
-                                    <th className="p-4 font-semibold">Tecnico</th>
+                                    <th className="p-4 font-semibold">Técnico</th>
                                     <th className="p-4 font-semibold">Agendamento</th>
                                     <th className="p-4 font-semibold">Status</th>
                                     <th className="p-4 font-semibold">Box</th>
                                     <th className="p-4 font-semibold">Prioridade</th>
                                     <th className="p-4 font-semibold">Entrada</th>
-                                    <th className="p-4 font-semibold">Acoes</th>
+                                    <th className="p-4 font-semibold">Ações</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -414,7 +414,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td className="p-4 text-center text-gray-500" colSpan={9}>Nenhum veiculo registrado no patio.</td>
+                                        <td className="p-4 text-center text-gray-500" colSpan={9}>Nenhum veículo registrado no pátio.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -422,7 +422,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                     </div>
                     <div className="md:hidden border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
                         {vehiclesOrdenados.length === 0 ? (
-                            <p className="text-sm text-center text-gray-500 dark:text-gray-400">Nenhum veiculo registrado no patio.</p>
+                            <p className="text-sm text-center text-gray-500 dark:text-gray-400">Nenhum veículo registrado no pátio.</p>
                         ) : (
                             vehiclesOrdenados.map((vehicle) => {
                                 const statusLabel = statusOptions.find((option) => option.value === vehicle.status)?.label || vehicle.status;
@@ -432,9 +432,9 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                         <div className="flex items-start justify-between gap-3">
                                             <div>
                                                 <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                                                    {[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veiculo sem descricao'}
+                                                    {[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veículo sem descrição'}
                                                 </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.clientName || 'Cliente nao informado'}</p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.clientName || 'Cliente não informado'}</p>
                                             </div>
                                             <div className="text-right">
                                                 <span className="font-mono text-sm text-gray-700 dark:text-gray-200">{vehicle.vehiclePlate || '--'}</span>
@@ -461,7 +461,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                         </div>
                                         <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
                                             <div>
-                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Tecnico responsavel</span>
+                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Técnico responsável</span>
                                                 <span>{vehicle.professionalName || '--'}</span>
                                             </div>
                                             <div>
@@ -469,7 +469,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                                 <span>{vehicle.appointmentDate ? new Date(vehicle.appointmentDate).toLocaleString('pt-BR') : '--'}</span>
                                             </div>
                                             <div>
-                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Entrada no patio</span>
+                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Entrada no pátio</span>
                                                 <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
                                             </div>
                                         </div>
@@ -512,13 +512,13 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                     <div className="p-4 space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">Total no patio</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Total no pátio</p>
                                 <p className="text-2xl font-bold">{vehiclesOrdenados.length}</p>
                             </div>
                             <Car className="text-blue-500" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Status dos veiculos</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Status dos veículos</p>
                             <div className="space-y-2">
                                 {statusOptions.map((option) => {
                                     const count = vehiclesOrdenados.filter((vehicle) => vehicle.status === option.value).length;
@@ -553,18 +553,18 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
                     <AlertTriangle className="text-yellow-500" />
                     <div>
-                        <h2 className="text-xl font-semibold">Historico recente</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Ultimos veiculos liberados para consulta rapida.</p>
+                        <h2 className="text-xl font-semibold">Histórico recente</h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Últimos veículos liberados para consulta rápida.</p>
                     </div>
                 </div>
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th className="p-4 font-semibold">Veiculo</th>
+                                <th className="p-4 font-semibold">Veículo</th>
                                 <th className="p-4 font-semibold">Placa</th>
                                 <th className="p-4 font-semibold">Entrada</th>
-                                <th className="p-4 font-semibold">Saida</th>
+                                <th className="p-4 font-semibold">Saída</th>
                                 <th className="p-4 font-semibold">Notas</th>
                             </tr>
                         </thead>
@@ -581,7 +581,7 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                 ))
                             ) : (
                                 <tr>
-                                    <td className="p-4 text-center text-gray-500" colSpan={5}>Nao ha historico de saidas.</td>
+                                    <td className="p-4 text-center text-gray-500" colSpan={5}>Não há histórico de saídas.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -593,8 +593,8 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                             <div key={vehicle.id} className="bg-white dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-2">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veiculo'}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.notes || 'Sem observacoes'}</p>
+                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veículo'}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.notes || 'Sem observações'}</p>
                                     </div>
                                     <span className="font-mono text-sm text-gray-700 dark:text-gray-200">{vehicle.vehiclePlate || '--'}</span>
                                 </div>
@@ -604,14 +604,14 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                         <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
                                     </div>
                                     <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Saida</span>
+                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Saída</span>
                                         <span>{vehicle.exitTime ? new Date(vehicle.exitTime).toLocaleString('pt-BR') : '--'}</span>
                                     </div>
                                 </div>
                             </div>
                         ))
                     ) : (
-                        <p className="text-sm text-center text-gray-500 dark:text-gray-400">Nao ha historico de saidas.</p>
+                        <p className="text-sm text-center text-gray-500 dark:text-gray-400">Não há histórico de saídas.</p>
                     )}
                 </div>
             </div>
