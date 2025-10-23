@@ -487,10 +487,12 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                             </td>
                                             <td className="p-4 font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(budget.total)}</td>
                                             <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{formatDate(budget.updatedAt || budget.createdAt)}</td>
-                                            <td className="p-4 text-right space-x-2">
-                                                <Button onClick={() => handleGeneratePdf(budget)} variant="secondary" icon={<FileDown size={16} />}>Gerar PDF</Button>
-                                                <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" icon={<Edit3 size={16} />}>Editar</Button>
-                                                <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" icon={<Trash2 size={16} />}>Excluir</Button>
+                                            <td className="p-4">
+                                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                                    <Button onClick={() => handleGeneratePdf(budget)} variant="secondary" className="px-3 py-1 text-sm" icon={<FileDown size={16} />}>Gerar PDF</Button>
+                                                    <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" className="px-3 py-1 text-sm" icon={<Edit3 size={16} />}>Editar</Button>
+                                                    <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" className="px-3 py-1 text-sm" icon={<Trash2 size={16} />}>Excluir</Button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -504,7 +506,7 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
             <div className="space-y-4 md:hidden">
                 {sortedBudgets.length === 0 ? (
                     <p className="text-center text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md">
-                        Nenhum orAamento cadastrado atAc o momento.
+                        Nenhum orçamento cadastrado até o momento.
                     </p>
                 ) : (
                     sortedBudgets.map(budget => {
@@ -514,7 +516,7 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                             <div key={budget.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-3 border border-gray-200 dark:border-gray-700">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">OrAamento #{budget.budgetNumber || 'N/A'}</p>
+                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">Orçamento #{budget.budgetNumber || 'N/A'}</p>
                                         <span className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusStyle}`}>{statusLabel}</span>
                                     </div>
                                     <div className="text-right">
@@ -760,11 +762,11 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                 <dd>{formatCurrency(totals.partsTotal)}</dd>
                             </div>
                             <div className="flex justify-between">
-                                <dt>Servicos</dt>
+                                <dt>Serviços</dt>
                                 <dd>{formatCurrency(totals.servicesTotal)}</dd>
                             </div>
                             <div className="flex justify-between">
-                                <dt>Mao de obra</dt>
+                                <dt>Mão de obra</dt>
                                 <dd>{formatCurrency(totals.laborCost)}</dd>
                             </div>
                             <div className="flex justify-between">
@@ -776,7 +778,7 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                 <dd>- {formatCurrency(totals.discount)}</dd>
                             </div>
                             <div className="flex justify-between text-lg font-semibold text-gray-800 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700 pt-3">
-                                <dt>Total do orcamento</dt>
+                                <dt>Total do orçamento</dt>
                                 <dd>{formatCurrency(totals.total)}</dd>
                             </div>
                         </dl>

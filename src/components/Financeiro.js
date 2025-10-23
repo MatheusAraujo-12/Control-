@@ -43,9 +43,9 @@ const LancamentoManualModal = ({ isOpen, onClose, onSave, type, initialData }) =
     const isEditing = Boolean(initialData);
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Editar lanÃ§amento manual' : type === 'receita' ? 'Adicionar entrada manual' : 'Adicionar despesa manual'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Editar lançamento manual' : type === 'receita' ? 'Adicionar entrada manual' : 'Adicionar despesa manual'}>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <Input name="description" value={formData.description} onChange={handleChange} placeholder="DescriÃ§Ã£o (ex: venda de serviço, compra de peças)" icon={<FileText size={18} />} required />
+                <Input name="description" value={formData.description} onChange={handleChange} placeholder="Descrição (ex: venda de serviço, compra de peças)" icon={<FileText size={18} />} required />
                 <Input name="amount" type="number" step="0.01" value={formData.amount} onChange={handleChange} placeholder="Valor (R$)" icon={<DollarSign size={18} />} required />
                 <Input name="date" type="date" value={formData.date} onChange={handleChange} icon={<Calendar size={18} />} required />
                 <div className="flex justify-end space-x-3 pt-4">
@@ -79,7 +79,7 @@ const RelatorioGeral = ({ transactions, onOpenModal, onEditTransaction, onDelete
         return { totalReceitas: receitas, totalDespesas: despesas, saldo: receitas - despesas, sortedTransactions: sorted };
     }, [transactions]);
 
-    const renderTipo = tipo => (tipo === 'receita' ? 'Entrada' : 'SaÃ­da');
+    const renderTipo = tipo => (tipo === 'receita' ? 'Entrada' : 'Saí­da');
 
     return (
         <div>
@@ -272,7 +272,7 @@ const Financeiro = ({ userId, transactions, professionals, setNotification }) =>
 
     const handleSaveManualTransaction = async data => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return false;
         }
         try {
@@ -317,7 +317,7 @@ const Financeiro = ({ userId, transactions, professionals, setNotification }) =>
     const handleDeleteTransaction = async transaction => {
         if (!transaction.id) return;
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return;
         }
         try {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { onSnapshot } from 'firebase/firestore';
-import { auth, onAuthStateChanged, signOut, userCollectionRef, userDocRef } from './firebase';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { onSnapshot, doc, getDoc, getDocs, updateDoc, collection, collectionGroup, query, where, setDoc } from 'firebase/firestore';
+import { auth, onAuthStateChanged, signOut, db, userCollectionRef, userDocRef } from './firebase';
 
 import Dashboard from './components/Dashboard';
 import Clientes from './components/Clientes';
@@ -11,7 +11,11 @@ import Financeiro from './components/Financeiro';
 import Patio from './components/Patio';
 import Orcamentos from './components/Orcamentos';
 import Configuracoes from './components/Configuracoes';
+import ContaTecnico from './components/ContaTecnico';
 import Auth from './components/Auth';
+import { getEmployeeNavItems, enhancePermissionsShape, EMPLOYEE_PERMISSION_CATALOG } from './components/EmployeePermissions';
+import ChangePassword from './components/ChangePassword';
+import TechnicianAccessGate from './components/TechnicianAccessGate';
 import { Toast } from './components/ui/Toast';
 import { Button } from './components/ui/Button';
 
@@ -35,6 +39,57 @@ import {
 
 const formatCurrency = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 
+const TECHNICIAN_PAGE_PERMISSIONS = Object.freeze({
+    agenda: 'agenda',
+    clientes: 'clientes',
+    patio: 'patio',
+    financeiro: 'financeiro',
+});
+
+const PERMISSION_LABEL_LOOKUP = EMPLOYEE_PERMISSION_CATALOG.reduce((accumulator, item) => {
+    accumulator[item.key] = item.label;
+    return accumulator;
+}, {});
+
+const resolveTrialEndDate = value => {
+    if (!value) {
+        return null;
+    }
+    if (typeof value.toDate === 'function') {
+        return value.toDate();
+    }
+    if (value instanceof Date) {
+        return value;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolveSubscriptionInfo = source => {
+    const status =
+        (source && (source.subscriptionStatus || source.parentSubscriptionStatus)) || 'active';
+    const plan =
+        (source && (source.subscriptionPlan || source.parentSubscriptionPlan)) || 'starter';
+    const trialEndsAt = resolveTrialEndDate(
+        source && (source.trialEndsAt || source.parentTrialEndsAt),
+    );
+    const now = new Date();
+    const isTrialing = status === 'trialing' && (!trialEndsAt || trialEndsAt > now);
+    const isActive = status === 'active' || isTrialing;
+    const trialDaysLeft =
+        isTrialing && trialEndsAt
+            ? Math.max(0, Math.ceil((trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+            : 0;
+    return {
+        status,
+        plan,
+        trialEndsAt,
+        isTrialing,
+        isActive,
+        trialDaysLeft,
+    };
+};
+
 const normalizeClient = client => ({
     id: client.id,
     name: client.name || '',
@@ -50,9 +105,14 @@ const normalizeClient = client => ({
 
 const normalizeProfessional = professional => ({
     id: professional.id,
+    uid: professional.uid || professional.id || '',
+    adminId: professional.adminId || '',
     name: professional.name || '',
     email: professional.email || '',
     specialty: professional.specialty || '',
+    permissions: enhancePermissionsShape(professional.permissions || {}),
+    mustChangePassword: professional.mustChangePassword || false,
+    avatarUrl: professional.avatarUrl || '',
 });
 
 const normalizeService = service => ({
@@ -147,6 +207,7 @@ export default function App() {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+    const lastPermissionWarningRef = useRef(null);
 
     const [clients, setClients] = useState([]);
     const [professionals, setProfessionals] = useState([]);
@@ -155,6 +216,7 @@ export default function App() {
     const [transactions, setTransactions] = useState([]);
     const [yardVehicles, setYardVehicles] = useState([]);
     const [budgets, setBudgets] = useState([]);
+    const [selectedProfessionalId, setSelectedProfessionalId] = useState('all');
     const [appSettings, setAppSettings] = useState({
         logoUrl: '',
         companyName: '',
@@ -166,10 +228,11 @@ export default function App() {
     });
     const [userProfile, setUserProfile] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
+    const [currentEmployee, setCurrentEmployee] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
 
     useEffect(() => {
-        if (!currentUser) {
+        if (!isAuthReady || !currentUser) {
             setClients([]);
             setProfessionals([]);
             setServices([]);
@@ -180,9 +243,13 @@ export default function App() {
             return undefined;
         }
 
+        const ownerUid = currentEmployee?.adminId || currentUser.uid;
+        if (!ownerUid) {
+            return undefined;
+        }
+
         const collectionsToWatch = [
             { name: 'clients', setter: setClients, normalizer: normalizeClient },
-            { name: 'professionals', setter: setProfessionals, normalizer: normalizeProfessional },
             { name: 'services', setter: setServices, normalizer: normalizeService },
             { name: 'appointments', setter: setAppointments, normalizer: normalizeAppointment },
             { name: 'transactions', setter: setTransactions, normalizer: normalizeTransaction },
@@ -192,7 +259,7 @@ export default function App() {
 
         const unsubscribers = collectionsToWatch.map(({ name, setter, normalizer }) => {
             try {
-                const collectionRef = userCollectionRef(currentUser.uid, name);
+                const collectionRef = collection(db, 'users', ownerUid, name);
                 return onSnapshot(
                     collectionRef,
                     snapshot => setter(snapshot.docs.map(docSnapshot => normalizer({ id: docSnapshot.id, ...docSnapshot.data() }))),
@@ -205,11 +272,23 @@ export default function App() {
             }
         });
 
+        try {
+            const professionalsRef = userCollectionRef(ownerUid, 'employees');
+            const unsubscribeProfessionals = onSnapshot(
+                professionalsRef,
+                snapshot => setProfessionals(snapshot.docs.map(docSnapshot => normalizeProfessional({ id: docSnapshot.id, ...docSnapshot.data() }))),
+                error => console.error('Erro ao buscar equipe tecnica:', error)
+            );
+            unsubscribers.push(unsubscribeProfessionals);
+        } catch (error) {
+            console.error('Erro ao inicializar listener de profissionais:', error);
+        }
+
         return () => unsubscribers.forEach(unsub => unsub());
-    }, [currentUser]);
+    }, [isAuthReady, currentUser, currentEmployee]);
 
     useEffect(() => {
-        if (!currentUser) {
+        if (!isAuthReady || !currentUser) {
             setAppSettings({
                 logoUrl: '',
                 companyName: '',
@@ -222,7 +301,12 @@ export default function App() {
             return undefined;
         }
 
-        const settingsRef = userDocRef(currentUser.uid, 'settings', 'app');
+        const ownerUid = currentEmployee?.adminId || currentUser.uid;
+        if (!ownerUid) {
+            return undefined;
+        }
+
+        const settingsRef = doc(db, 'users', ownerUid, 'settings', 'app');
         const unsubscribe = onSnapshot(
             settingsRef,
             snapshot => {
@@ -255,16 +339,125 @@ export default function App() {
         );
 
         return () => unsubscribe();
-    }, [currentUser]);
+    }, [isAuthReady, currentUser, currentEmployee]);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
+        const syncLegacyProfile = async authUser => {
+            try {
+                const directSnapshot = await getDoc(userDocRef(authUser.uid));
+                if (directSnapshot.exists()) {
+                    const directData = directSnapshot.data() || {};
+                    if (directData.role === 'employee') {
+                        setCurrentEmployee(normalizeProfessional({ id: directSnapshot.id, ...directData }));
+                    } else {
+                        setUserProfile({ id: directSnapshot.id, ...directData });
+                    }
+                    return true;
+                }
+            } catch (error) {
+                if (error?.code !== 'permission-denied') {
+                    console.error('Erro ao acessar perfil principal do usuario autenticado:', error);
+                } else {
+                    console.warn('Permissao negada ao acessar perfil primario do usuario.');
+                }
+            }
+
+            try {
+                const legacyRef = doc(db, 'employees', authUser.uid);
+                const legacySnapshot = await getDoc(legacyRef);
+                if (legacySnapshot.exists()) {
+                    const legacyData = legacySnapshot.data() || {};
+                    const normalizedEmployee = normalizeProfessional({ id: legacySnapshot.id, ...legacyData });
+                    setCurrentEmployee(normalizedEmployee);
+                    return true;
+                }
+            } catch (error) {
+                if (error?.code !== 'permission-denied') {
+                    console.error('Erro ao acessar registro legacy de tecnico:', error);
+                } else {
+                    console.warn('Permissao negada ao acessar registro legacy de tecnico.');
+                }
+            }
+
+            try {
+                const employeesQuery = query(collectionGroup(db, 'employees'), where('uid', '==', authUser.uid));
+                const employeesSnapshot = await getDocs(employeesQuery);
+                if (!employeesSnapshot.empty) {
+                    const employeeDoc = employeesSnapshot.docs[0];
+                    const legacyData = employeeDoc.data() || {};
+                    const adminId = legacyData.adminId || employeeDoc.ref.parent?.parent?.id || '';
+                    const normalizedEmployee = normalizeProfessional({
+                        id: employeeDoc.id,
+                        adminId,
+                        ...legacyData,
+                    });
+                    setCurrentEmployee(normalizedEmployee);
+                    const { initialPassword: _, ...publicData } = legacyData;
+                    try {
+                        await setDoc(
+                            doc(db, 'users', authUser.uid),
+                            {
+                                ...publicData,
+                                adminId,
+                                uid: authUser.uid,
+                                role: 'employee',
+                            },
+                            { merge: true }
+                        );
+                    } catch (writeError) {
+                        if (writeError?.code !== 'permission-denied') {
+                            console.warn('Falha ao sincronizar perfil individual de tecnico:', writeError);
+                        }
+                    }
+                    return true;
+                }
+            } catch (error) {
+                if (error?.code !== 'permission-denied') {
+                    console.error('Erro ao acessar perfil do tecnico nas colecoes de administradores:', error);
+                } else {
+                    console.warn('Permissao negada ao acessar perfil do tecnico nas colecoes de administradores.');
+                }
+            }
+
+            return false;
+        };
+
+        const unsubscribe = onAuthStateChanged(auth, async user => {
+            setIsAuthReady(false);
             setCurrentUser(user);
-            setIsAuthReady(true);
-            if (!user) {
+            setCurrentEmployee(null);
+            setUserProfile(null);
+
+            if (user) {
+                let resolved = false;
+                try {
+                    const profileSnapshot = await getDoc(userDocRef(user.uid));
+                    if (profileSnapshot.exists()) {
+                        const profileData = profileSnapshot.data() || {};
+                        if (profileData.role === 'employee') {
+                            setCurrentEmployee(normalizeProfessional({ id: user.uid, ...profileData }));
+                        } else {
+                            setUserProfile({ id: profileSnapshot.id, ...profileData });
+                        }
+                        resolved = true;
+                    }
+                } catch (error) {
+                    if (error?.code !== 'permission-denied') {
+                        console.error('Erro ao acessar perfil do usuario autenticado:', error);
+                    } else {
+                        console.warn('Permissao negada ao acessar perfil primario do usuario.');
+                    }
+                }
+
+                if (!resolved) {
+                    await syncLegacyProfile(user);
+                }
+            } else {
                 setActivePage('dashboard');
                 setIsSidebarOpen(false);
             }
+
+            setIsAuthReady(true);
         });
 
         return () => unsubscribe();
@@ -272,30 +465,48 @@ export default function App() {
 
     useEffect(() => {
         if (!currentUser) {
-            setUserProfile(null);
-            return;
+            return undefined;
         }
-
         const unsubscribe = onSnapshot(
             userDocRef(currentUser.uid),
             snapshot => {
                 if (!snapshot.exists()) {
-                    setUserProfile(null);
                     return;
                 }
-                setUserProfile({ id: snapshot.id, ...snapshot.data() });
+                const data = snapshot.data() || {};
+                if (data.role === 'employee') {
+                    setUserProfile(null);
+                    setCurrentEmployee(normalizeProfessional({ id: snapshot.id, ...data }));
+                } else {
+                    setCurrentEmployee(null);
+                    setUserProfile({ id: snapshot.id, ...data });
+                }
             },
             error => {
-                console.error('Erro ao buscar dados do usuário:', error);
+                console.error('Erro ao observar perfil atual:', error);
             }
         );
-
         return () => unsubscribe();
     }, [currentUser]);
 
     useEffect(() => {
         document.documentElement.classList.toggle('dark', isDarkMode);
     }, [isDarkMode]);
+
+    useEffect(() => {
+        if (!userProfile && selectedProfessionalId !== 'all') {
+            setSelectedProfessionalId('all');
+        }
+    }, [userProfile, selectedProfessionalId]);
+
+    useEffect(() => {
+        if (
+            selectedProfessionalId !== 'all' &&
+            !professionals.some(pro => (pro?.uid || pro?.id) === selectedProfessionalId)
+        ) {
+            setSelectedProfessionalId('all');
+        }
+    }, [professionals, selectedProfessionalId]);
 
     const notify = payload => {
         if (typeof payload === 'string') {
@@ -328,6 +539,26 @@ export default function App() {
         }
     };
 
+    const handlePasswordChanged = async () => {
+        if (!currentUser) {
+            return;
+        }
+        const updates = { mustChangePassword: false };
+        try {
+            const tasks = [
+                updateDoc(doc(db, 'users', currentUser.uid), updates),
+            ];
+            if (currentEmployee?.adminId) {
+                tasks.push(updateDoc(userDocRef(currentEmployee.adminId, 'employees', currentUser.uid), updates));
+            }
+            await Promise.allSettled(tasks);
+            setCurrentEmployee(prev => (prev ? { ...prev, mustChangePassword: false } : prev));
+        } catch (error) {
+            console.error('Erro ao atualizar status de alteracao de senha:', error);
+        }
+    };
+
+
     const dashboardStats = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -348,33 +579,116 @@ export default function App() {
                 && parsed.getDate() === today.getDate();
         };
 
-        const receitaHojeValue = transactions
-            .filter(transaction => transaction.type === 'receita' && isSameCalendarDay(transaction.date))
-            .reduce((sum, transaction) => sum + (transaction.totalAmount || 0), 0);
+        const isSameMonth = value => {
+            const parsed = toDate(value);
+            if (!parsed) return false;
+            return parsed.getFullYear() === today.getFullYear()
+                && parsed.getMonth() === today.getMonth();
+        };
 
-        const agendamentosHoje = appointments.filter(appointment => isSameCalendarDay(appointment.date)).length;
+        const isEmployeeView = Boolean(currentEmployee && !userProfile);
+        const employeeUid = currentEmployee?.uid || currentEmployee?.id || null;
 
-        const novosClientesMes = clients.filter(client => {
-            const createdAt = toDate(client.createdAt);
-            if (!createdAt) return false;
-            return createdAt.getFullYear() === today.getFullYear() && createdAt.getMonth() === today.getMonth();
-        }).length;
+        const adminSelectedProfessional = !isEmployeeView && selectedProfessionalId !== 'all'
+            ? professionals.find(pro => (pro?.uid || pro?.id) === selectedProfessionalId)
+            : null;
 
-        const comissoesPendentesValue = transactions
-            .filter(transaction => transaction.type === 'receita')
+        const selectedProfessionalUid = isEmployeeView
+            ? employeeUid
+            : adminSelectedProfessional?.uid || adminSelectedProfessional?.id || null;
+        const selectedProfessionalName = isEmployeeView
+            ? currentEmployee?.name || ''
+            : adminSelectedProfessional?.name || '';
+        const shouldFilterByProfessional = Boolean(selectedProfessionalUid);
+
+        const matchesProfessional = item => {
+            if (!shouldFilterByProfessional) {
+                return true;
+            }
+            const candidateId =
+                item?.professionalId ||
+                item?.uid ||
+                item?.technicianId ||
+                item?.employeeId ||
+                item?.assignedProfessionalId ||
+                item?.responsibleId ||
+                null;
+            if (candidateId && candidateId === selectedProfessionalUid) {
+                return true;
+            }
+            const candidateName =
+                item?.professionalName ||
+                item?.technicianName ||
+                item?.assignedProfessionalName ||
+                item?.responsibleName ||
+                null;
+            if (selectedProfessionalName && candidateName) {
+                return candidateName === selectedProfessionalName;
+            }
+            return false;
+        };
+
+        const relevantTransactions = transactions.filter(matchesProfessional);
+        const relevantAppointments = appointments.filter(matchesProfessional);
+        const relevantYardVehicles = yardVehicles.filter(matchesProfessional);
+        const relevantBudgets = budgets.filter(matchesProfessional);
+
+        const revenueTransactions = relevantTransactions.filter(transaction => transaction.type === 'receita');
+
+        const totalCommissionValue = revenueTransactions
             .reduce((sum, transaction) => sum + (transaction.commission || 0), 0);
 
+        const totalRevenueValue = revenueTransactions
+            .reduce((sum, transaction) => sum + (transaction.totalAmount || 0), 0);
+
+        const receitaHojeValue = revenueTransactions
+            .filter(transaction => isSameCalendarDay(transaction.date))
+            .reduce((sum, transaction) => sum + (isEmployeeView ? (transaction.commission || 0) : (transaction.totalAmount || 0)), 0);
+
+        const receitaMesValue = revenueTransactions
+            .filter(transaction => isSameMonth(transaction.date))
+            .reduce((sum, transaction) => sum + (transaction.totalAmount || 0), 0);
+
+        const comissoesMesValue = revenueTransactions
+            .filter(transaction => isSameMonth(transaction.date))
+            .reduce((sum, transaction) => sum + (transaction.commission || 0), 0);
+
+        const agendamentosHoje = relevantAppointments.filter(appointment => isSameCalendarDay(appointment.date)).length;
+
+        const isScopedToProfessional = shouldFilterByProfessional;
+
+        const novosClientesMes = isScopedToProfessional
+            ? (() => {
+                const servedClients = new Set();
+                relevantAppointments.forEach(appointment => {
+                    const parsed = toDate(appointment.date);
+                    if (!parsed) {
+                        return;
+                    }
+                    if (parsed.getFullYear() === today.getFullYear() && parsed.getMonth() === today.getMonth()) {
+                        servedClients.add(appointment.clientId || appointment.clientName || appointment.id);
+                    }
+                });
+                return servedClients.size;
+            })()
+            : clients.filter(client => {
+                const createdAt = toDate(client.createdAt);
+                if (!createdAt) return false;
+                return createdAt.getFullYear() === today.getFullYear() && createdAt.getMonth() === today.getMonth();
+            }).length;
+
+        const chartSeriesKey = isEmployeeView ? 'Comissao' : 'Receita';
+        const chartSeriesLabel = isEmployeeView ? 'Comissão' : 'Receita';
+
         const receitaPorDia = new Map();
-        transactions
-            .filter(transaction => transaction.type === 'receita')
-            .forEach(transaction => {
-                const parsed = toDate(transaction.date);
-                if (!parsed) return;
-                parsed.setHours(0, 0, 0, 0);
-                const key = parsed.toISOString().slice(0, 10);
-                const totalAtual = receitaPorDia.get(key) || 0;
-                receitaPorDia.set(key, totalAtual + (transaction.totalAmount || 0));
-            });
+        revenueTransactions.forEach(transaction => {
+            const parsed = toDate(transaction.date);
+            if (!parsed) return;
+            parsed.setHours(0, 0, 0, 0);
+            const key = parsed.toISOString().slice(0, 10);
+            const valor = isEmployeeView ? (transaction.commission || 0) : (transaction.totalAmount || 0);
+            receitaPorDia.set(key, (receitaPorDia.get(key) || 0) + valor);
+        });
 
         const receitaSemanal = Array.from({ length: 7 }, (_, index) => {
             const day = new Date(today);
@@ -382,11 +696,11 @@ export default function App() {
             const key = day.toISOString().slice(0, 10);
             return {
                 name: `${day.getDate().toString().padStart(2, '0')}/${(day.getMonth() + 1).toString().padStart(2, '0')}`,
-                Receita: receitaPorDia.get(key) || 0,
+                [chartSeriesKey]: receitaPorDia.get(key) || 0,
             };
         });
 
-        const proximosAgendamentos = appointments
+        const proximosAgendamentos = relevantAppointments
             .map(appointment => ({ ...appointment, parsedDate: toDate(appointment.date) }))
             .filter(appointment => appointment.parsedDate && appointment.parsedDate >= today)
             .sort((a, b) => a.parsedDate - b.parsedDate)
@@ -399,10 +713,25 @@ export default function App() {
                 vehiclePlate: appointment.vehiclePlate || '',
             }));
 
-        const rankingMap = new Map();
-        transactions
-            .filter(transaction => transaction.type === 'receita')
-            .forEach(transaction => {
+        const rankingColaboradores = (() => {
+            if (isScopedToProfessional) {
+                const orders = revenueTransactions.length;
+                const totalForDisplay = isEmployeeView ? totalCommissionValue : totalRevenueValue;
+                if (!orders && !totalForDisplay) {
+                    return [];
+                }
+                return [
+                    {
+                        id: selectedProfessionalUid || 'professional',
+                        name: selectedProfessionalName || (isEmployeeView ? 'Voce' : 'Profissional'),
+                        total: totalForDisplay,
+                        orders,
+                    },
+                ];
+            }
+
+            const rankingMap = new Map();
+            revenueTransactions.forEach(transaction => {
                 const key = transaction.professionalId || transaction.professionalName || 'equipe';
                 const current = rankingMap.get(key) || {
                     id: transaction.professionalId || key,
@@ -415,36 +744,152 @@ export default function App() {
                 rankingMap.set(key, current);
             });
 
-        const rankingColaboradores = Array.from(rankingMap.values())
-            .sort((a, b) => b.total - a.total)
-            .slice(0, 5);
+            return Array.from(rankingMap.values())
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 5);
+        })();
 
-        const veiculosNoPatio = yardVehicles.filter(vehicle => !vehicle.exitTime).length;
+        const veiculosNoPatio = relevantYardVehicles.filter(vehicle => !vehicle.exitTime).length;
+        const pendingBudgetsCount = relevantBudgets.filter(budget => ['draft', 'sent'].includes(budget.status)).length;
+
+        const labels = isEmployeeView
+            ? {
+                painelTitulo: 'Painel do profissional',
+                receitaHoje: 'Comissao (hoje)',
+                receitaMes: 'Receita (mes)',
+                comissoesMes: 'Comissao (mes)',
+                agendamentosHoje: 'Ordens do dia',
+                veiculosNoPatio: 'Veiculos sob seus cuidados',
+                novosClientes: 'Clientes atendidos (mes)',
+                comissoesPendentes: 'Total de comissoes',
+                orcamentosPendentes: 'Orcamentos pendentes',
+                grafico: 'Comissao (7 dias)',
+                ranking: 'Seu ranking',
+                rankingCta: 'Ver suas ordens',
+                rankingCtaTarget: 'agenda',
+                proximosAgendamentos: 'Seus proximos servicos',
+            }
+            : {
+                painelTitulo: 'Painel da oficina',
+                receitaHoje: 'Receita de servicos (hoje)',
+                receitaMes: 'Receita do mes',
+                comissoesMes: 'Comissoes do mes',
+                agendamentosHoje: 'Ordens do dia',
+                veiculosNoPatio: 'Veiculos no patio',
+                novosClientes: 'Novos clientes (mes)',
+                comissoesPendentes: 'Repasses pendentes',
+                orcamentosPendentes: 'Orcamentos pendentes',
+                grafico: 'Faturamento da oficina (7 dias)',
+                ranking: 'Ranking de colaboradores',
+                rankingCta: 'Ver detalhes no financeiro',
+                rankingCtaTarget: 'financeiro',
+                proximosAgendamentos: 'Proximos servicos',
+                filtroTecnicos: 'Filtrar por tecnico',
+            };
 
         return {
             receitaHoje: formatCurrency(receitaHojeValue),
+            monthlyRevenue: formatCurrency(receitaMesValue),
+            monthlyCommission: formatCurrency(comissoesMesValue),
             agendamentosHoje,
             novosClientesMes,
-            comissoesPendentes: formatCurrency(comissoesPendentesValue),
+            comissoesPendentes: formatCurrency(totalCommissionValue),
+            pendingBudgets: pendingBudgetsCount,
             receitaSemanal,
             proximosAgendamentos,
             rankingColaboradores,
             veiculosNoPatio,
+            labels,
+            chartSeriesKey,
+            chartSeriesLabel,
+            selectedProfessionalName,
         };
-    }, [transactions, appointments, clients, yardVehicles]);
+    }, [transactions, appointments, clients, yardVehicles, budgets, currentEmployee, userProfile, professionals, selectedProfessionalId]);
+
+    const userPermissions = useMemo(
+        () => enhancePermissionsShape(currentEmployee?.permissions || {}),
+        [currentEmployee?.permissions],
+    );
+
+    const isAdminUser = Boolean(userProfile);
+    const isEmployeeUser = Boolean(currentEmployee && !userProfile);
+
+    const subscriptionState = useMemo(() => {
+        if (isAdminUser) {
+            return resolveSubscriptionInfo(userProfile);
+        }
+        if (isEmployeeUser) {
+            return resolveSubscriptionInfo(currentEmployee);
+        }
+        return resolveSubscriptionInfo(null);
+    }, [isAdminUser, isEmployeeUser, userProfile, currentEmployee]);
+
+    useEffect(() => {
+        if (userProfile || !currentEmployee) {
+            lastPermissionWarningRef.current = null;
+            return;
+        }
+        const requiredPermission = TECHNICIAN_PAGE_PERMISSIONS[activePage];
+        if (requiredPermission && !userPermissions[requiredPermission]) {
+            const label = PERMISSION_LABEL_LOOKUP[requiredPermission] || 'esta area';
+            if (lastPermissionWarningRef.current !== requiredPermission) {
+                setNotification({ show: true, type: 'error', message: `Acesso a ${label} nao esta liberado para seu perfil.` });
+                lastPermissionWarningRef.current = requiredPermission;
+            }
+            if (activePage !== 'dashboard') {
+                setActivePage('dashboard');
+            }
+        } else {
+            lastPermissionWarningRef.current = null;
+        }
+    }, [activePage, userPermissions, currentEmployee, userProfile, setActivePage, setNotification]);
 
     const renderPage = () => {
-        switch (activePage) {
-            case 'dashboard':
-                return <Dashboard setActivePage={setActivePage} stats={dashboardStats} isDarkMode={isDarkMode} />;
-            case 'clientes':
-                return <Clientes userId={currentUser?.uid} clients={clients} setNotification={notify} />;
-            case 'profissionais':
-                return <Profissionais userId={currentUser?.uid} professionals={professionals} setNotification={notify} />;
-            case 'servicos':
-                return <Servicos userId={currentUser?.uid} services={services} setNotification={notify} />;
-            case 'agenda':
-                return (
+        if (currentEmployee && currentEmployee.mustChangePassword) {
+            return <ChangePassword user={currentUser} setNotification={notify} onPasswordChanged={handlePasswordChanged} />;
+        }
+
+        if (!subscriptionState.isActive && activePage !== 'configuracoes') {
+            const title = isAdminUser ? 'Plano inativo' : 'Plano indisponivel';
+            const description = isAdminUser
+                ? 'Seu plano foi desativado. Acesse a area de configuracoes para regularizar sua assinatura.'
+                : 'O administrador da sua equipe precisa regularizar o plano para que o acesso seja restabelecido.';
+            return (
+                <div className="py-12">
+                    <div className="max-w-xl mx-auto bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-400 rounded-xl shadow-lg p-8 space-y-4 text-center">
+                        <h2 className="text-2xl font-semibold text-amber-600 dark:text-amber-300">{title}</h2>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">{description}</p>
+                        {subscriptionState.isTrialing && subscriptionState.trialDaysLeft > 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Periodo de teste: {subscriptionState.trialDaysLeft} dia(s) restante(s).
+                            </p>
+                        )}
+                        {isAdminUser && (
+                            <Button onClick={() => setActivePage('configuracoes')} icon={<SettingsIcon size={16} />}>
+                                Ir para configuracoes
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const technicianFeatureMap = {
+            dashboard: {
+                permission: null,
+                render: () => (
+                    <Dashboard
+                        setActivePage={setActivePage}
+                        stats={dashboardStats}
+                        isDarkMode={isDarkMode}
+                        isEmployeeView
+                        employee={currentEmployee}
+                    />
+                ),
+            },
+            agenda: {
+                permission: 'agenda',
+                render: () => (
                     <Agenda
                         userId={currentUser?.uid}
                         appointments={appointments}
@@ -453,7 +898,112 @@ export default function App() {
                         services={services}
                         setNotification={notify}
                     />
+                ),
+            },
+            clientes: {
+                permission: 'clientes',
+                render: () => <Clientes userId={currentUser?.uid} clients={clients} setNotification={notify} />,
+            },
+            patio: {
+                permission: 'patio',
+                render: () => (
+                    <Patio
+                        userId={currentUser?.uid}
+                        vehicles={yardVehicles}
+                        professionals={professionals}
+                        clients={clients}
+                        setNotification={notify}
+                        canEdit={userPermissions.patio_edit}
+                    />
+                ),
+            },
+            financeiro: {
+                permission: 'financeiro',
+                render: () => (
+                    <Financeiro
+                        userId={currentUser?.uid}
+                        transactions={transactions}
+                        professionals={professionals}
+                        setNotification={notify}
+                    />
+                ),
+            },
+            configuracoes: {
+                permission: null,
+                render: () => (
+                    <ContaTecnico
+                        userId={currentUser?.uid}
+                        setNotification={notify}
+                        currentUser={currentUser}
+                        currentEmployee={currentEmployee}
+                        userProfile={userProfile}
+                    />
+                ),
+            },
+        };
+
+        technicianFeatureMap.default = technicianFeatureMap.dashboard;
+
+        if (currentEmployee && !userProfile) {
+            const fallback = ({ permission }) => {
+                const label = permission ? (PERMISSION_LABEL_LOOKUP[permission] || 'esta area') : 'esta area';
+                return (
+                    <div className="space-y-4">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                            <p className="font-semibold">Acesso indisponivel</p>
+                            <p className="text-sm mt-1">Solicite ao administrador a liberacao para {label.toLowerCase()}.</p>
+                        </div>
+                        {technicianFeatureMap.dashboard.render()}
+                    </div>
                 );
+            };
+            return (
+                <TechnicianAccessGate
+                    pageId={activePage}
+                    permissions={userPermissions}
+                    features={technicianFeatureMap}
+                    fallback={fallback}
+                />
+            );
+        }
+
+        switch (activePage) {
+            case 'dashboard':
+                return (
+                    <Dashboard
+                        setActivePage={setActivePage}
+                        stats={dashboardStats}
+                        isDarkMode={isDarkMode}
+                        isEmployeeView={Boolean(currentEmployee && !userProfile)}
+                        employee={currentEmployee}
+                        canFilter={Boolean(userProfile)}
+                        professionals={professionals}
+                        selectedProfessionalId={selectedProfessionalId}
+                        onProfessionalChange={setSelectedProfessionalId}
+                    />
+                );
+            case 'clientes':
+                return userProfile || userPermissions.clientes ? <Clientes userId={currentUser?.uid} clients={clients} setNotification={notify} /> : null;
+            case 'profissionais':
+                return userProfile ? (
+                    <Profissionais
+                        userId={currentUser?.uid}
+                        professionals={professionals}
+                        setNotification={notify}
+                        subscriptionInfo={subscriptionState}
+                    />
+                ) : null;
+            case 'servicos':
+                return <Servicos userId={currentUser?.uid} services={services} setNotification={notify} />;
+            case 'agenda':
+                return userProfile || userPermissions.agenda ? <Agenda
+                        userId={currentUser?.uid}
+                        appointments={appointments}
+                        professionals={professionals}
+                        clients={clients}
+                        services={services}
+                        setNotification={notify}
+                    /> : null;
             case 'orcamentos':
                 return (
                     <Orcamentos
@@ -466,21 +1016,27 @@ export default function App() {
                     />
                 );
             case 'financeiro':
-                return <Financeiro userId={currentUser?.uid} transactions={transactions} professionals={professionals} setNotification={notify} />;
+                return userProfile || userPermissions.financeiro ? <Financeiro userId={currentUser?.uid} transactions={transactions} professionals={professionals} setNotification={notify} /> : null;
             case 'patio':
-                return <Patio userId={currentUser?.uid} vehicles={yardVehicles} professionals={professionals} clients={clients} setNotification={notify} />;
+                return userProfile || userPermissions.patio ? <Patio userId={currentUser?.uid} vehicles={yardVehicles} professionals={professionals} clients={clients} setNotification={notify} canEdit={userProfile || userPermissions.patio_edit} /> : null;
             case 'configuracoes':
-                return (
+                return userProfile ? (
                     <Configuracoes
                         userId={currentUser?.uid}
                         appSettings={appSettings}
                         setNotification={notify}
+                    />
+                ) : (
+                    <ContaTecnico
+                        userId={currentUser?.uid}
+                        setNotification={notify}
                         currentUser={currentUser}
+                        currentEmployee={currentEmployee}
                         userProfile={userProfile}
                     />
                 );
             default:
-                return <Dashboard setActivePage={setActivePage} stats={dashboardStats} isDarkMode={isDarkMode} />;
+                return <Dashboard setActivePage={setActivePage} stats={dashboardStats} isDarkMode={isDarkMode} isEmployeeView={Boolean(currentEmployee && !userProfile)} employee={currentEmployee} />;
         }
     };
 
@@ -511,7 +1067,12 @@ export default function App() {
         );
     }
 
-    const navItems = [
+    const employeeNavItems = [
+        { id: 'dashboard', label: 'Painel', icon: <Gauge size={20} /> },
+        ...getEmployeeNavItems(userPermissions),
+        { id: 'configuracoes', label: 'Minha conta', icon: <SettingsIcon size={20} /> },
+    ];
+    const navItems = userProfile ? [
         { id: 'dashboard', label: 'Painel', icon: <Gauge size={20} /> },
         { id: 'agenda', label: 'Agenda da oficina', icon: <Calendar size={20} /> },
         { id: 'clientes', label: 'Clientes e veiculos', icon: <Users size={20} /> },
@@ -521,7 +1082,7 @@ export default function App() {
         { id: 'patio', label: 'Controle de patio', icon: <Warehouse size={20} /> },
         { id: 'financeiro', label: 'Financeiro', icon: <PiggyBank size={20} /> },
         { id: 'configuracoes', label: 'Configuracoes', icon: <SettingsIcon size={20} /> },
-    ];
+    ] : employeeNavItems;
 
     return (
         <div className="min-h-screen w-full bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex flex-col md:flex-row">
@@ -572,6 +1133,18 @@ export default function App() {
                         {currentUser && (
                             <span className="hidden sm:inline text-sm text-gray-500 dark:text-gray-400">{currentUser.email}</span>
                         )}
+                        {subscriptionState.isTrialing && subscriptionState.isActive && (
+                            <span className="text-xs font-semibold text-amber-600 bg-amber-100 border border-amber-200 px-2 py-1 rounded-md">
+                                {isAdminUser
+                                    ? `Teste: ${subscriptionState.trialDaysLeft} dia(s)`
+                                    : `Plano em teste (${subscriptionState.trialDaysLeft} dia(s))`}
+                            </span>
+                        )}
+                        {!subscriptionState.isActive && (
+                            <span className="text-xs font-semibold text-red-600 bg-red-100 border border-red-200 px-2 py-1 rounded-md">
+                                {isAdminUser ? 'Plano inativo' : 'Plano do administrador inativo'}
+                            </span>
+                        )}
                         <Button onClick={handleLogout} variant="secondary" icon={<LogOut size={16} />}>
                             Sair
                         </Button>
@@ -588,5 +1161,6 @@ export default function App() {
             </main>
         </div>
     );
+}
 
-    }
+

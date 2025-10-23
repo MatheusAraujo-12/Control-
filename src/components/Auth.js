@@ -13,6 +13,8 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Mail, LockKeyhole, Phone, IdCard, Calendar, UserPlus } from 'lucide-react';
 
+const TRIAL_DURATION_DAYS = 14;
+
 const initialFormState = {
     fullName: '',
     email: '',
@@ -73,15 +75,22 @@ const Auth = ({ setNotification }) => {
                 if (formData.fullName.trim()) {
                     await updateProfile(userCredential.user, { displayName: formData.fullName.trim() });
                 }
+                const trialEndsAt = new Date(Date.now() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000);
                 await setDoc(
                     doc(db, 'users', userCredential.user.uid),
                     {
                         uid: userCredential.user.uid,
+                        role: 'admin',
                         fullName: formData.fullName.trim(),
                         email: formData.email.trim().toLowerCase(),
                         birthDate: formData.birthDate,
                         cpfCnpj: formData.cpfCnpj.trim(),
                         phone: formData.phone.trim(),
+                        subscriptionPlan: 'trial',
+                        subscriptionStatus: 'trialing',
+                        trialStartsAt: serverTimestamp(),
+                        trialEndsAt,
+                        subscriptionUpdatedAt: serverTimestamp(),
                         createdAt: serverTimestamp(),
                     },
                     { merge: true }

@@ -54,7 +54,7 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
                 <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="E-mail" icon={<Mail size={18} />} />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca do veiculo" icon={<Car size={18} />} />
+                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca do veículo" icon={<Car size={18} />} />
                     <Input name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} placeholder="Modelo" icon={<Wrench size={18} />} />
                     <Input name="vehicleYear" value={formData.vehicleYear} onChange={handleChange} placeholder="Ano" icon={<CalendarIcon size={18} />} />
                     <Input name="vehiclePlate" value={formData.vehiclePlate} onChange={handleChange} placeholder="Placa" icon={<Hash size={18} />} />
@@ -62,7 +62,7 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
 
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? "Salvando..." : client ? "Salvar alteracoes" : "Cadastrar cliente"}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving ? "Salvando..." : client ? "Salvar alterações" : "Cadastrar cliente"}</Button>
                 </div>
             </form>
         </Modal>
@@ -85,7 +85,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
 
     const handleSaveClient = async clientData => {
         if (!userId) {
-            setNotification({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return false;
         }
         try {
@@ -100,7 +100,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
         } catch (error) {
             console.error('Erro ao salvar cliente:', error);
             const extra = error && error.code ? ` (${error.code})` : '';
-            setNotification({ type: 'error', message: `Nao foi possivel salvar o cliente${extra}.` });
+            setNotification({ type: 'error', message: `Não foi possível salvar o cliente${extra}.` });
             return false;
         }
     };
@@ -108,7 +108,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Clientes e veiculos</h1>
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Clientes e veículos</h1>
                 <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo cliente</Button>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hidden md:block">
@@ -119,7 +119,7 @@ const Clientes = ({ userId, clients, setNotification }) => {
                                 <th className="p-4 font-semibold">Cliente</th>
                                 <th className="p-4 font-semibold">Telefone</th>
                                 <th className="p-4 font-semibold">E-mail</th>
-                                <th className="p-4 font-semibold">Veiculo</th>
+                                <th className="p-4 font-semibold">Veículo</th>
                                 <th className="p-4 font-semibold">Placa</th>
                                 <th className="p-4 font-semibold">Ações</th>
                             </tr>

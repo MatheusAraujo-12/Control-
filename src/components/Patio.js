@@ -8,8 +8,8 @@ import { Car, ClipboardList, MapPin, AlertTriangle, Clock, CheckCircle, Trash2, 
 
 const statusOptions = [
     { value: 'recebido', label: 'Recebido no pátio' },
-    { value: 'diagnostico', label: 'Em diagnostico' },
-    { value: 'aguardando_peças', label: 'Aguardando pecas' },
+    { value: 'diagnostico', label: 'Em diagnóstico' },
+    { value: 'aguardando_peças', label: 'Aguardando peças' },
     { value: 'manutenção', label: 'Em manutenção' },
     { value: 'lavagem', label: 'Em lavagem' },
     { value: 'liberado', label: 'Liberado para entrega' },
@@ -44,10 +44,11 @@ const normalizeForForm = (record) => ({
     expectedDelivery: record.expectedDelivery ? new Date(record.expectedDelivery).toISOString().slice(0, 16) : '',
 });
 
-const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professionals }) => {
+const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professionals, canEdit }) => {
     const [formData, setFormData] = useState(() => createEmptyRecord());
 
     const [isSaving, setIsSaving] = useState(false);
+    const isReadOnly = !canEdit;
 
     useEffect(() => {
         if (vehicle) {
@@ -87,6 +88,10 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
 
     const handleSubmit = async (event) => {
         event.preventDefault();
+        if (!canEdit) {
+            onClose();
+            return;
+        }
         setIsSaving(true);
         try {
             const success = await onSave(formData);
@@ -99,8 +104,9 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={vehicle ? 'Editar veiculo no pátio' : 'Registrar entrada no pátio'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={vehicle ? 'Editar veículo no pátio' : 'Registrar entrada no pátio'}>
             <form onSubmit={handleSubmit} className="space-y-4">
+                <fieldset disabled={isReadOnly} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium">Cliente</label>
                     <select
@@ -186,21 +192,27 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                         name="notes"
                         value={formData.notes}
                         onChange={handleChange}
-                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700"
+                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200"
                         rows={3}
                         placeholder="Anote aprovações, pendências de peças ou solicitações do cliente"
                     ></textarea>
                 </div>
+                </fieldset>
+                {isReadOnly && (
+                    <p className="text-sm text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/30 rounded-lg px-3 py-2">
+                        Voce nao tem permissao para registrar ou editar veiculos no patio. Solicite ao administrador o acesso de edicao.
+                    </p>
+                )}
                 <div className="flex justify-end gap-3">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar'}</Button>
+                    <Button type="submit" disabled={isSaving || isReadOnly}>{isSaving ? 'Salvando...' : 'Salvar'}</Button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-const Patio = ({ userId, vehicles, professionals, clients, setNotification }) => {
+const Patio = ({ userId, vehicles, professionals, clients, setNotification, canEdit = false }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedVehicle, setSelectedVehicle] = useState(null);
 
@@ -233,6 +245,10 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
     const handleSaveVehicle = async (data) => {
         if (!userId) {
             setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
+            return;
+        }
+        if (!canEdit) {
+            setNotification({ type: 'error', message: 'Voce nao tem permissao para registrar veiculos.' });
             return;
         }
         try {
@@ -313,6 +329,10 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
             setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return;
         }
+        if (!canEdit) {
+            setNotification({ type: 'error', message: 'Voce nao tem permissao para editar veiculos no patio.' });
+            return;
+        }
         try {
             await updateDoc(userDocRef(userId, 'yard', vehicle.id), {
                 status: 'liberado',
@@ -336,6 +356,10 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
             setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
             return;
         }
+        if (!canEdit) {
+            setNotification({ type: 'error', message: 'Voce nao tem permissao para remover registros do patio.' });
+            return;
+        }
         try {
             await deleteDoc(userDocRef(userId, 'yard', vehicle.id));
             setNotification({ type: 'success', message: 'Registro removido do pátio.' });
@@ -353,9 +377,11 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Organize os veículos presentes na oficina e gere agendamentos automaticamente.</p>
                 </div>
                 <Button
-                    onClick={() => { setSelectedVehicle(null); setIsModalOpen(true); }}
+                    onClick={canEdit ? () => { setSelectedVehicle(null); setIsModalOpen(true); } : undefined}
                     icon={<Plus size={18} />}
                     className="w-full md:w-auto"
+                    disabled={!canEdit}
+                    title={canEdit ? undefined : 'Necessario permissao de edicao do patio'}
                 >
                     Registrar entrada
                 </Button>
@@ -405,10 +431,16 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                                 </span>
                                             </td>
                                             <td className="p-4 text-sm">{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</td>
-                                            <td className="p-4 space-x-2 whitespace-nowrap">
-                                                <Button variant="secondary" className="px-3 py-1 text-sm" onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}>Editar</Button>
-                                                <Button variant="success" className="px-3 py-1 text-sm" onClick={() => handleLiberarVeiculo(vehicle)} icon={<CheckCircle size={16} />}>Liberar</Button>
-                                                <Button variant="danger" className="px-3 py-1 text-sm" onClick={() => handleRemoverRegistro(vehicle)} icon={<Trash2 size={16} />}>Remover</Button>
+                                            <td className="p-4">
+                                                {canEdit ? (
+                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                        <Button variant="secondary" className="px-3 py-1 text-sm" onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}>Editar</Button>
+                                                        <Button variant="success" className="px-3 py-1 text-sm" onClick={() => handleLiberarVeiculo(vehicle)} icon={<CheckCircle size={16} />}>Liberar</Button>
+                                                        <Button variant="danger" className="px-3 py-1 text-sm" onClick={() => handleRemoverRegistro(vehicle)} icon={<Trash2 size={16} />}>Remover</Button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400">Sem permissao de edicao</span>
+                                                )}
                                             </td>
                                         </tr>
                                     ))
@@ -473,31 +505,36 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                                                 <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
                                             </div>
                                         </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            <Button
-                                                variant="secondary"
-                                                className="flex-1 min-w-[120px]"
-                                                onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}
-                                            >
-                                                Editar
-                                            </Button>
-                                            <Button
-                                                variant="success"
-                                                className="flex-1 min-w-[120px]"
-                                                onClick={() => handleLiberarVeiculo(vehicle)}
-                                                icon={<CheckCircle size={16} />}
-                                            >
-                                                Liberar
-                                            </Button>
-                                            <Button
-                                                variant="danger"
-                                                className="flex-1 min-w-[120px]"
-                                                onClick={() => handleRemoverRegistro(vehicle)}
-                                                icon={<Trash2 size={16} />}
-                                            >
-                                                Remover
-                                            </Button>
-                                        </div>
+                                        {canEdit ? (
+                                            <div className="flex flex-wrap gap-2">
+                                                <Button
+                                                    variant="secondary"
+                                                    className="flex-1 min-w-[120px]"
+                                                    onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}
+                                                >
+                                                    Editar
+                                                </Button>
+                                                <Button
+                                                    variant="success"
+                                                    className="flex-1 min-w-[120px]"
+                                                    onClick={() => handleLiberarVeiculo(vehicle)}
+                                                    icon={<CheckCircle size={16} />}
+                                                >
+                                                    Liberar
+                                                </Button>
+                                                <Button
+                                                    variant="danger"
+                                                    className="flex-1 min-w-[120px]"
+                                                    onClick={() => handleRemoverRegistro(vehicle)}
+                                                    icon={<Trash2 size={16} />}
+                                                >
+                                                    Remover
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Sem permissao de edicao</p>
+                                        )}
+
                                     </div>
                                 );
                             })
@@ -623,10 +660,12 @@ const Patio = ({ userId, vehicles, professionals, clients, setNotification }) =>
                 onSave={handleSaveVehicle}
                 clients={clients}
                 professionals={professionals}
+                canEdit={canEdit}
             />
         </div>
     );
 };
 
 export default Patio;
+
 

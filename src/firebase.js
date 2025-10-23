@@ -1,9 +1,10 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
     initializeFirestore,
     Timestamp,
     addDoc,
     collection,
+    collectionGroup,
     deleteDoc,
     setDoc,
     doc,
@@ -36,8 +37,17 @@ const firebaseConfig = Object.freeze({
     measurementId: 'G-Y12LFE78EB',
 });
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
+
+let secondaryAuthInstance;
+const getSecondaryAuth = () => {
+    if (!secondaryAuthInstance) {
+        const secondaryApp = getApps().find((registeredApp) => registeredApp.name === 'secondary') || initializeApp(firebaseConfig, 'secondary');
+        secondaryAuthInstance = getAuth(secondaryApp);
+    }
+    return secondaryAuthInstance;
+};
 
 const db = initializeFirestore(
     app,
@@ -67,6 +77,7 @@ export {
     db,
     auth,
     collection,
+    collectionGroup,
     addDoc,
     doc,
     updateDoc,
@@ -88,4 +99,5 @@ export {
     EmailAuthProvider,
     userCollectionRef,
     userDocRef,
+    getSecondaryAuth,
 };
