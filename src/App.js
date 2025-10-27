@@ -18,6 +18,8 @@ import ChangePassword from './components/ChangePassword';
 import TechnicianAccessGate from './components/TechnicianAccessGate';
 import { Toast } from './components/ui/Toast';
 import { Button } from './components/ui/Button';
+import OrdensDeServico from './components/OrdensDeServico';
+import Estoque from './components/Estoque';
 
 import {
     Gauge,
@@ -35,6 +37,8 @@ import {
     Moon,
     Menu,
     X,
+    ClipboardPaste,
+    Archive,
 } from 'lucide-react';
 
 const formatCurrency = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -96,10 +100,7 @@ const normalizeClient = client => ({
     cpf: client.cpf || '',
     phone: client.phone || '',
     email: client.email || '',
-    vehicleBrand: client.vehicleBrand || '',
-    vehicleModel: client.vehicleModel || '',
-    vehicleYear: client.vehicleYear || '',
-    vehiclePlate: client.vehiclePlate || '',
+    vehicles: client.vehicles || [],
     createdAt: client.createdAt || null,
 });
 
@@ -202,6 +203,32 @@ const normalizeYardVehicle = vehicle => ({
     appointmentId: vehicle.appointmentId || '',
 });
 
+const normalizeOrdemDeServico = ordem => ({
+    id: ordem.id,
+    clientId: ordem.clientId || '',
+    clientName: ordem.clientName || '',
+    vehiclePlate: ordem.vehiclePlate || '',
+    vehicleModel: ordem.vehicleModel || '',
+    vehicleBrand: ordem.vehicleBrand || '',
+    professionalId: ordem.professionalId || '',
+    professionalName: ordem.professionalName || '',
+    services: Array.isArray(ordem.services) ? ordem.services : [],
+    parts: Array.isArray(ordem.parts) ? ordem.parts : [],
+    status: ordem.status || 'Pendente',
+    notes: ordem.notes || '',
+    createdAt: ordem.createdAt || null,
+    totalPrice: Number.isFinite(ordem.totalPrice) ? ordem.totalPrice : 0,
+});
+
+const normalizeEstoqueItem = item => ({
+    id: item.id,
+    name: item.name || '',
+    description: item.description || '',
+    quantity: Number.isFinite(item.quantity) ? item.quantity : 0,
+    price: Number.isFinite(item.price) ? item.price : 0,
+    supplier: item.supplier || '',
+});
+
 export default function App() {
     const [activePage, setActivePage] = useState('dashboard');
     const [isDarkMode, setIsDarkMode] = useState(false);
@@ -216,6 +243,8 @@ export default function App() {
     const [transactions, setTransactions] = useState([]);
     const [yardVehicles, setYardVehicles] = useState([]);
     const [budgets, setBudgets] = useState([]);
+    const [ordensDeServico, setOrdensDeServico] = useState([]);
+    const [estoque, setEstoque] = useState([]);
     const [selectedProfessionalId, setSelectedProfessionalId] = useState('all');
     const [appSettings, setAppSettings] = useState({
         logoUrl: '',
@@ -240,6 +269,8 @@ export default function App() {
             setTransactions([]);
             setBudgets([]);
             setYardVehicles([]);
+            setOrdensDeServico([]);
+            setEstoque([]);
             return undefined;
         }
 
@@ -255,6 +286,8 @@ export default function App() {
             { name: 'transactions', setter: setTransactions, normalizer: normalizeTransaction },
             { name: 'budgets', setter: setBudgets, normalizer: normalizeBudget },
             { name: 'yard', setter: setYardVehicles, normalizer: normalizeYardVehicle },
+            { name: 'ordens-de-servico', setter: setOrdensDeServico, normalizer: normalizeOrdemDeServico },
+            { name: 'estoque', setter: setEstoque, normalizer: normalizeEstoqueItem },
         ];
 
         const unsubscribers = collectionsToWatch.map(({ name, setter, normalizer }) => {
@@ -1004,6 +1037,15 @@ export default function App() {
                         services={services}
                         setNotification={notify}
                     /> : null;
+            case 'ordens-de-servico':
+                return <OrdensDeServico
+                    userId={currentUser?.uid}
+                    ordensDeServico={ordensDeServico}
+                    clients={clients}
+                    services={services}
+                    professionals={professionals}
+                    setNotification={notify}
+                />;
             case 'orcamentos':
                 return (
                     <Orcamentos
@@ -1015,10 +1057,12 @@ export default function App() {
                         setNotification={notify}
                     />
                 );
-            case 'financeiro':
-                return userProfile || userPermissions.financeiro ? <Financeiro userId={currentUser?.uid} transactions={transactions} professionals={professionals} setNotification={notify} /> : null;
             case 'patio':
                 return userProfile || userPermissions.patio ? <Patio userId={currentUser?.uid} vehicles={yardVehicles} professionals={professionals} clients={clients} setNotification={notify} canEdit={userProfile || userPermissions.patio_edit} /> : null;
+            case 'estoque':
+                return <Estoque userId={currentUser?.uid} estoque={estoque} setNotification={notify} />;
+            case 'financeiro':
+                return userProfile || userPermissions.financeiro ? <Financeiro userId={currentUser?.uid} transactions={transactions} professionals={professionals} setNotification={notify} /> : null;
             case 'configuracoes':
                 return userProfile ? (
                     <Configuracoes
@@ -1075,11 +1119,13 @@ export default function App() {
     const navItems = userProfile ? [
         { id: 'dashboard', label: 'Painel', icon: <Gauge size={20} /> },
         { id: 'agenda', label: 'Agenda da oficina', icon: <Calendar size={20} /> },
+        { id: 'ordens-de-servico', label: 'Ordens de Serviço', icon: <ClipboardPaste size={20} /> },
+        { id: 'orcamentos', label: 'Orcamentos', icon: <ClipboardList size={20} /> },
+        { id: 'patio', label: 'Controle de patio', icon: <Warehouse size={20} /> },
         { id: 'clientes', label: 'Clientes e veiculos', icon: <Users size={20} /> },
         { id: 'profissionais', label: 'Equipe tecnica', icon: <UserCog size={20} /> },
         { id: 'servicos', label: 'Servicos da oficina', icon: <Wrench size={20} /> },
-        { id: 'orcamentos', label: 'Orcamentos', icon: <ClipboardList size={20} /> },
-        { id: 'patio', label: 'Controle de patio', icon: <Warehouse size={20} /> },
+        { id: 'estoque', label: 'Estoque', icon: <Archive size={20} /> },
         { id: 'financeiro', label: 'Financeiro', icon: <PiggyBank size={20} /> },
         { id: 'configuracoes', label: 'Configuracoes', icon: <SettingsIcon size={20} /> },
     ] : employeeNavItems;
@@ -1162,5 +1208,3 @@ export default function App() {
         </div>
     );
 }
-
-

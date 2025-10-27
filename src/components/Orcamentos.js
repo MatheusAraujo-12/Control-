@@ -565,54 +565,70 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                 title={currentBudget ? `Editar orcamento ${currentBudget.budgetNumber || ''}` : 'Novo orcamento'}
             >
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Cliente vinculado</label>
-                            <select
-                                value={formData.clientId}
-                                onChange={handleClientChange}
-                                className="w-full border rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
-                            >
-                                <option value="">Selecione um cliente</option>
-                                {clients.map(client => (
-                                    <option key={client.id} value={client.id}>{client.name}</option>
-                                ))}
-                            </select>
+                    <div className="space-y-4">
+                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
+                            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 -mb-2">Informações Principais</h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Cliente vinculado</label>
+                                    <select
+                                        value={formData.clientId}
+                                        onChange={handleClientChange}
+                                        className="w-full border rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
+                                    >
+                                        <option value="">Selecione um cliente ou digite um nome</option>
+                                        {clients.map(client => (
+                                            <option key={client.id} value={client.id}>{client.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Nome do Cliente </label>
+                                    <Input
+                                        name="clientName"
+                                        value={formData.clientName}
+                                        onChange={handleInputChange}
+                                        placeholder="Nome do cliente"
+                                        icon={<User size={18} />}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Marca do Veículo</label>
+                                    <Input
+                                        name="vehicleBrand"
+                                        value={formData.vehicleBrand}
+                                        onChange={handleInputChange}
+                                        placeholder="Ex: Fiat"
+                                        icon={<CarIcon size={18} />}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Modelo</label>
+                                    <Input
+                                        name="vehicleModel"
+                                        value={formData.vehicleModel}
+                                        onChange={handleInputChange}
+                                        placeholder="Ex: Uno"
+                                        icon={<CarIcon size={18} />}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Placa</label>
+                                    <Input
+                                        name="vehiclePlate"
+                                        value={formData.vehiclePlate}
+                                        onChange={handleInputChange}
+                                        placeholder="Ex: ABC-1234"
+                                        icon={<CarIcon size={18} />}
+                                    />
+                                </div>
+                            </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Nome do cliente exibido</label>
-                            <Input
-                                name="clientName"
-                                value={formData.clientName}
-                                onChange={handleInputChange}
-                                placeholder="Nome do cliente"
-                                icon={<User size={18} />}
-                                required
-                            />
-                        </div>
-                        <Input
-                            name="vehicleBrand"
-                            value={formData.vehicleBrand}
-                            onChange={handleInputChange}
-                            placeholder="Marca do veiculo"
-                            icon={<CarIcon size={18} />}
-                        />
-                        <Input
-                            name="vehicleModel"
-                            value={formData.vehicleModel}
-                            onChange={handleInputChange}
-                            placeholder="Modelo"
-                            icon={<CarIcon size={18} />}
-                        />
-                        <Input
-                            name="vehiclePlate"
-                            value={formData.vehiclePlate}
-                            onChange={handleInputChange}
-                            placeholder="Placa"
-                            icon={<CarIcon size={18} />}
-                        />
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Status</label>
+                            <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Status do Orçamento</label>
                             <select
                                 name="status"
                                 value={formData.status}
@@ -626,12 +642,12 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                         </div>
                     </div>
 
-                    <div className="space-y-3">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-1">
                             <select
                                 value={selectedServiceId}
                                 onChange={event => setSelectedServiceId(event.target.value)}
-                                className="flex-1 border rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
+                                className="flex-1 border rounded-lg px-0 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
                             >
                                 <option value="">Adicionar serviço existente</option>
                                 {services.map(service => (
@@ -640,14 +656,14 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                     </option>
                                 ))}
                             </select>
-                            <Button type="button" variant="secondary" icon={<Wrench size={16} />} onClick={handleAddService}>Incluir serviço</Button>
+                            <Button type="button" variant="secondary" icon={<Wrench size={10} />} onClick={handleAddService}>Incluir</Button>
                         </div>
                         {formData.services.length === 0 ? (
                             <p className="text-sm text-gray-500 dark:text-gray-400">Nenhum serviço selecionado.</p>
                         ) : (
                             <ul className="space-y-2">
                                 {formData.services.map(service => (
-                                    <li key={service.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+                                    <li key={service.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
                                         <div>
                                             <p className="font-medium text-gray-700 dark:text-gray-200">{service.name}</p>
                                             <p className="text-sm text-gray-500 dark:text-gray-400">{formatCurrency(service.price)}</p>
@@ -672,16 +688,16 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                 {formData.parts.map(part => {
                                     const subtotal = (Number(part.quantity) || 0) * (Number(part.unitPrice) || 0);
                                     return (
-                                        <div key={part.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                                            <div className="md:col-span-2">
-                                                <Input
-                                                    value={part.name}
-                                                    onChange={event => handlePartChange(part.id, 'name', event.target.value)}
-                                                    placeholder="Descrição da peça"
-                                                    icon={<Package size={18} />}
-                                                />
-                                            </div>
-                                            <div>
+                                        <div key={part.id} className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div className="sm:col-span-2">
+                                                    <Input
+                                                        value={part.name}
+                                                        onChange={event => handlePartChange(part.id, 'name', event.target.value)}
+                                                        placeholder="Descrição da peça"
+                                                        icon={<Package size={18} />}
+                                                    />
+                                                </div>
                                                 <Input
                                                     type="number"
                                                     min="0"
@@ -691,8 +707,6 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                                     placeholder="Qtd"
                                                     icon={<Package size={18} />}
                                                 />
-                                            </div>
-                                            <div>
                                                 <Input
                                                     type="number"
                                                     min="0"
@@ -703,9 +717,17 @@ const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSett
                                                     icon={<DollarSign size={18} />}
                                                 />
                                             </div>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(subtotal)}</span>
-                                                <Button type="button" variant="danger" icon={<Trash2 size={16} />} onClick={() => handleRemovePart(part.id)}>Remover</Button>
+                                            <div className="flex items-center justify-between pt-3 mt-2 border-t border-gray-200 dark:border-gray-700">
+                                                <div>
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400">Subtotal da Peça</span>
+                                                    <p className="text-base font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(subtotal)}</p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="danger"
+                                                    icon={<Trash2 size={16} />}
+                                                    onClick={() => handleRemovePart(part.id)}
+                                                />
                                             </div>
                                         </div>
                                     );

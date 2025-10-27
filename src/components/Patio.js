@@ -4,7 +4,7 @@ import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Car, ClipboardList, MapPin, AlertTriangle, Clock, CheckCircle, Trash2, Calendar as CalendarIcon, Plus } from 'lucide-react';
+import { Car, ClipboardList, MapPin, AlertTriangle, CheckCircle, Trash2, Calendar as CalendarIcon, Plus } from 'lucide-react';
 
 const statusOptions = [
     { value: 'recebido', label: 'Recebido no pátio' },
@@ -179,13 +179,7 @@ const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professional
                     icon={<CalendarIcon size={18} />}
                     required
                 />
-                <Input
-                    name="expectedDelivery"
-                    type="datetime-local"
-                    value={formData.expectedDelivery}
-                    onChange={handleChange}
-                    icon={<Clock size={18} />}
-                />
+
                 <div>
                     <label className="block text-sm font-medium">Observações</label>
                     <textarea

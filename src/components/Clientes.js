@@ -11,10 +11,7 @@ const emptyClient = {
     cpf: '',
     phone: '',
     email: '',
-    vehicleBrand: '',
-    vehicleModel: '',
-    vehicleYear: '',
-    vehiclePlate: '',
+    vehicles: [{ brand: '', model: '', year: '', plate: '' }],
 };
 
 const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
@@ -22,10 +19,46 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        setFormData(client ? { ...emptyClient, ...client } : emptyClient);
+        if (client) {
+            // To maintain compatibility with the old data structure, we map old vehicle fields to the new structure.
+            const vehicles = (client.vehicles && client.vehicles.length > 0)
+                ? client.vehicles
+                : [{
+                    brand: client.vehicleBrand || '',
+                    model: client.vehicleModel || '',
+                    year: client.vehicleYear || '',
+                    plate: client.vehiclePlate || '',
+                }];
+
+            setFormData({
+                ...emptyClient,
+                ...client,
+                vehicles,
+            });
+        } else {
+            setFormData(emptyClient);
+        }
     }, [client, isOpen]);
 
     const handleChange = event => setFormData({ ...formData, [event.target.name]: event.target.value });
+
+    const handleVehicleChange = (index, event) => {
+        const newVehicles = [...formData.vehicles];
+        newVehicles[index][event.target.name] = event.target.value;
+        setFormData({ ...formData, vehicles: newVehicles });
+    };
+
+    const addVehicle = () => {
+        setFormData({
+            ...formData,
+            vehicles: [...formData.vehicles, { brand: '', model: '', year: '', plate: '' }],
+        });
+    };
+
+    const removeVehicle = index => {
+        const newVehicles = formData.vehicles.filter((_, i) => i !== index);
+        setFormData({ ...formData, vehicles: newVehicles });
+    };
 
     const handleSubmit = async event => {
         event.preventDefault();
@@ -34,7 +67,9 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
         }
         setIsSaving(true);
         try {
-            const success = await onSave(formData);
+            // Before saving, remove the old single-vehicle properties if they exist
+            const { vehicleBrand, vehicleModel, vehicleYear, vehiclePlate, ...clientData } = formData;
+            const success = await onSave(clientData);
             if (success) {
                 onClose();
             }
@@ -53,12 +88,22 @@ const ClientFormModal = ({ isOpen, onClose, client, onSave }) => {
                 <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" icon={<Phone size={18} />} required />
                 <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="E-mail" icon={<Mail size={18} />} />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca do veículo" icon={<Car size={18} />} />
-                    <Input name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} placeholder="Modelo" icon={<Wrench size={18} />} />
-                    <Input name="vehicleYear" value={formData.vehicleYear} onChange={handleChange} placeholder="Ano" icon={<CalendarIcon size={18} />} />
-                    <Input name="vehiclePlate" value={formData.vehiclePlate} onChange={handleChange} placeholder="Placa" icon={<Hash size={18} />} />
-                </div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white border-t pt-4">Veículos</h3>
+                {formData.vehicles.map((vehicle, index) => (
+                    <div key={index} className="space-y-4 border p-4 rounded-md relative">
+                         {formData.vehicles.length > 1 && (
+                            <Button type="button" variant="danger" onClick={() => removeVehicle(index)} className="absolute top-2 right-2 px-2 py-1 text-xs">Remover</Button>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input name="brand" value={vehicle.brand} onChange={e => handleVehicleChange(index, e)} placeholder="Marca do veículo" icon={<Car size={18} />} />
+                            <Input name="model" value={vehicle.model} onChange={e => handleVehicleChange(index, e)} placeholder="Modelo" icon={<Wrench size={18} />} />
+                            <Input name="year" value={vehicle.year} onChange={e => handleVehicleChange(index, e)} placeholder="Ano" icon={<CalendarIcon size={18} />} />
+                            <Input name="plate" value={vehicle.plate} onChange={e => handleVehicleChange(index, e)} placeholder="Placa" icon={<Hash size={18} />} />
+                        </div>
+                    </div>
+                ))}
+
+                <Button type="button" variant="outline" onClick={addVehicle} className="w-full">Adicionar outro veículo</Button>
 
                 <div className="flex justify-end space-x-3 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -119,21 +164,32 @@ const Clientes = ({ userId, clients, setNotification }) => {
                                 <th className="p-4 font-semibold">Cliente</th>
                                 <th className="p-4 font-semibold">Telefone</th>
                                 <th className="p-4 font-semibold">E-mail</th>
-                                <th className="p-4 font-semibold">Veículo</th>
-                                <th className="p-4 font-semibold">Placa</th>
+                                <th className="p-4 font-semibold">Veículo(s)</th>
+                                <th className="p-4 font-semibold">Placa(s)</th>
                                 <th className="p-4 font-semibold">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {clients.map(client => {
-                                const vehicle = [client.vehicleBrand, client.vehicleModel, client.vehicleYear].filter(Boolean).join(" ");
+                                const vehicles = (client.vehicles && client.vehicles.length > 0)
+                                    ? client.vehicles
+                                    : [{
+                                        brand: client.vehicleBrand,
+                                        model: client.vehicleModel,
+                                        year: client.vehicleYear,
+                                        plate: client.vehiclePlate
+                                    }];
+
+                                const vehicleStr = vehicles.map(v => [v.brand, v.model, v.year].filter(Boolean).join(" ")).filter(Boolean).join(", ");
+                                const plateStr = vehicles.map(v => v.plate).filter(Boolean).join(", ");
+
                                 return (
                                     <tr key={client.id}>
                                         <td className="p-4">{client.name}</td>
                                         <td className="p-4">{client.phone}</td>
                                         <td className="p-4">{client.email}</td>
-                                <td className="p-4">{vehicle || 'Não informado'}</td>
-                                <td className="p-4">{client.vehiclePlate || 'Sem placa'}</td>
+                                        <td className="p-4">{vehicleStr || 'Não informado'}</td>
+                                        <td className="p-4">{plateStr || 'Sem placa'}</td>
                                         <td className="p-4">
                                             <Button onClick={() => openModal(client)} variant="secondary"><Edit size={16} /></Button>
                                         </td>
@@ -146,7 +202,18 @@ const Clientes = ({ userId, clients, setNotification }) => {
             </div>
             <div className="space-y-4 md:hidden">
                 {clients.map(client => {
-                    const vehicle = [client.vehicleBrand, client.vehicleModel, client.vehicleYear].filter(Boolean).join(' ');
+                    const vehicles = (client.vehicles && client.vehicles.length > 0)
+                        ? client.vehicles
+                        : [{
+                            brand: client.vehicleBrand,
+                            model: client.vehicleModel,
+                            year: client.vehicleYear,
+                            plate: client.vehiclePlate
+                        }];
+
+                    const vehicleStr = vehicles.map(v => [v.brand, v.model, v.year].filter(Boolean).join(' ')).filter(Boolean).join(", ");
+                    const plateStr = vehicles.map(v => v.plate).filter(Boolean).join(", ");
+
                     let createdAtLabel = '--';
                     if (client.createdAt) {
                         const createdAtDate = typeof client.createdAt === 'object' && client.createdAt.seconds
@@ -173,12 +240,12 @@ const Clientes = ({ userId, clients, setNotification }) => {
                                     <span>{client.phone}</span>
                                 </div>
                                 <div>
-                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Veículo</span>
-                                    <span>{vehicle || 'Nao informado'}</span>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Veículo(s)</span>
+                                    <span>{vehicleStr || 'Nao informado'}</span>
                                 </div>
                                 <div>
-                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Placa</span>
-                                    <span>{client.vehiclePlate || 'Sem placa'}</span>
+                                    <span className="block font-medium text-gray-500 dark:text-gray-400">Placa(s)</span>
+                                    <span>{plateStr || 'Sem placa'}</span>
                                 </div>
                                 <div>
                                     <span className="block font-medium text-gray-500 dark:text-gray-400">Criado em</span>

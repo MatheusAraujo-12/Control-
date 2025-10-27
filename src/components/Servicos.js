@@ -4,7 +4,8 @@ import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Plus, Edit, Wrench, DollarSign, Clock, Coins } from 'lucide-react';
+import { Plus, Edit, Wrench, DollarSign, Clock, Coins, Upload, Download } from 'lucide-react';
+import Papa from 'papaparse';
 
 const createDefaultServiceValues = () => ({
     name: '',
@@ -65,8 +66,58 @@ const ServiceFormModal = ({ isOpen, onClose, service, onSave }) => {
     );
 };
 
+const UploadModal = ({ isOpen, onClose, onUpload, setNotification }) => {
+    const [file, setFile] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const handleFileChange = (event) => {
+        setFile(event.target.files[0]);
+    };
+
+    const handleUpload = () => {
+        if (!file) {
+            setNotification({ type: 'error', message: 'Por favor, selecione um arquivo.' });
+            return;
+        }
+
+        setIsUploading(true);
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: async (results) => {
+                try {
+                    await onUpload(results.data);
+                    onClose();
+                } catch (error) {
+                    setNotification({ type: 'error', message: `Erro ao importar planilha: ${error.message}` });
+                } finally {
+                    setIsUploading(false);
+                }
+            },
+            error: (error) => {
+                setNotification({ type: 'error', message: `Erro ao ler o arquivo: ${error.message}` });
+                setIsUploading(false);
+            }
+        });
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Importar Serviços de Planilha CSV">
+            <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-300">Selecione um arquivo CSV para importar os serviços. Certifique-se de que a planilha tenha as colunas: <strong>name, price, duration, commissionType, commissionValue</strong>.</p>
+                <Input type="file" accept=".csv" onChange={handleFileChange} />
+                <div className="flex justify-end space-x-3 pt-4">
+                    <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                    <Button onClick={handleUpload} disabled={isUploading}>{isUploading ? 'Importando...' : 'Importar'}</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 const Servicos = ({ userId, services, setNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [currentService, setCurrentService] = useState(null);
 
     const openModal = service => {
@@ -113,11 +164,48 @@ const Servicos = ({ userId, services, setNotification }) => {
         }
     };
 
+    const handleDownloadTemplate = () => {
+        const headers = 'name,price,duration,commissionType,commissionValue';
+        const csvContent = `data:text/csv;charset=utf-8,${headers}`;
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', 'modelo_servicos.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleUpload = async (data) => {
+        if (!userId) {
+            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
+            return;
+        }
+
+        const promises = data.map(service => {
+            const serviceData = {
+                name: service.name || '',
+                price: parseFloat(service.price) || 0,
+                duration: parseInt(service.duration, 10) || 60,
+                commissionType: ['percentage', 'fixed'].includes(service.commissionType) ? service.commissionType : 'percentage',
+                commissionValue: parseFloat(service.commissionValue) || 0,
+            };
+            return addDoc(userCollectionRef(userId, 'services'), serviceData);
+        });
+
+        await Promise.all(promises);
+        setNotification({ type: 'success', message: `${data.length} serviços importados com sucesso!` });
+    };
+
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold">Serviços da oficina</h1>
-                <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo serviço</Button>
+                <div className="flex space-x-2">
+                    <Button onClick={() => setIsUploadModalOpen(true)} variant="outline" icon={<Upload size={18} />}>Importar de Planilha</Button>
+                    <Button onClick={handleDownloadTemplate} variant="outline" icon={<Download size={18} />}>Baixar Modelo</Button>
+                    <Button onClick={() => openModal(null)} icon={<Plus size={18} />}>Novo serviço</Button>
+                </div>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hidden md:block">
                 <table className="w-full text-left">
@@ -180,6 +268,7 @@ const Servicos = ({ userId, services, setNotification }) => {
                 ))}
             </div>
             <ServiceFormModal isOpen={isModalOpen} onClose={closeModal} service={currentService} onSave={handleSave} />
+            <UploadModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} onUpload={handleUpload} setNotification={setNotification} />
         </div>
     );
 };
