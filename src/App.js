@@ -33,11 +33,15 @@ import ContaTecnico from './components/ContaTecnico';
 import Auth from './components/Auth';
 import ChangePassword from './components/ChangePassword';
 import TechnicianAccessGate from './components/TechnicianAccessGate';
+import {
+  getEmployeeNavItems,
+  enhancePermissionsShape,
+} from './components/EmployeePermissions';
 import { Toast } from './components/ui/Toast';
 import { Button } from './components/ui/Button';
 import OrdensDeServico from './components/OrdensDeServico';
 
-import FinanceiroFixed from './components/Financeiro'; // Mantendo Financeiro.js pois parece existir
+import FinanceiroFixed from './components/FinanceiroFixed';
 import TransacoesFixed from './components/TransacoesFixed'; // Ajustado para Fixed
 import NotasFiscaisFixed from './components/NotasFiscaisFixed'; // Ajustado para Fixed
 import EstoqueFixed from './components/EstoqueFixed'; // Ajustado para Fixed
