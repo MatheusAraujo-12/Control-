@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from './ui/Button';
 import { FileText, Download } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const RelatoriosFixed = ({ transactions = [], estoque = [] }) => {
 
@@ -21,7 +21,7 @@ const RelatoriosFixed = ({ transactions = [], estoque = [] }) => {
             new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(t.amount))
         ]);
 
-        doc.autoTable({
+        autoTable(doc, {
             startY: 35,
             head: [['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor']],
             body: tableData,
@@ -60,7 +60,7 @@ const RelatoriosFixed = ({ transactions = [], estoque = [] }) => {
             new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(item.stock) * Number(item.cost || 0))
         ]);
 
-        doc.autoTable({
+        autoTable(doc, {
             startY: 35,
             head: [['Item', 'Qtd', 'Custo Unit.', 'Venda Unit.', 'Valor Total (Custo)']],
             body: tableData,

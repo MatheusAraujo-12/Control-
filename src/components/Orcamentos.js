@@ -8,7 +8,7 @@ import { ConfirmModal } from './ui/ConfirmModal';
 
 import { Edit, Plus, Trash2, Wrench, DollarSign, Printer, Car, User, Package, Search, X, Save, FileText, CreditCard, Calendar } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // --- Componentes de UI Auxiliares ---
 
@@ -461,14 +461,14 @@ const OrdemDeServicoFormModal = ({
         doc.text(`Data: ${new Date().toLocaleDateString()}`, 150, 40);
 
         const servicesData = formData.services.map(s => [s.name, s.quantity, `R$ ${Number(s.price).toFixed(2)}`]);
-        doc.autoTable({ startY: 70, head: [['Serviço', 'Qtd', 'Preço Unit.']], body: servicesData, theme: 'grid' });
+        autoTable(doc, { startY: 70, head: [['Serviço', 'Qtd', 'Preço Unit.']], body: servicesData, theme: 'grid' });
 
-        let finalY = doc.lastAutoTable.finalY + 10;
+        let finalY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : 80;
         if (formData.parts.length > 0) {
             doc.text('Peças:', 20, finalY);
             const partsData = formData.parts.map(p => [p.name, p.quantity, `R$ ${Number(p.price).toFixed(2)}`]);
-            doc.autoTable({ startY: finalY + 5, head: [['Peça', 'Qtd', 'Preço Unit.']], body: partsData, theme: 'grid' });
-            finalY = doc.lastAutoTable.finalY + 10;
+            autoTable(doc, { startY: finalY + 5, head: [['Peça', 'Qtd', 'Preço Unit.']], body: partsData, theme: 'grid' });
+            finalY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : finalY + 20;
         }
 
         if (formData.laborDescription) {
@@ -621,7 +621,16 @@ const OrdemDeServicoFormModal = ({
                                                 className="w-12 p-1 text-center border rounded text-xs"
                                                 min="1"
                                             />
-                                            <span className="text-xs font-semibold w-20 text-right">R$ {(service.price * service.quantity).toFixed(2)}</span>
+                                            <input
+                                                type="number"
+                                                value={service.price}
+                                                onChange={(e) => handleUpdateServiceInOS(index, 'price', Number(e.target.value))}
+                                                className="w-20 p-1 text-right border rounded text-xs"
+                                                min="0"
+                                                step="0.01"
+                                                title="Editar valor unitário"
+                                            />
+                                            <span className="text-xs font-semibold w-24 text-right">R$ {(Number(service.price || 0) * Number(service.quantity || 0)).toFixed(2)}</span>
                                             <button type="button" onClick={() => handleRemoveServiceFromOS(index)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
                                         </div>
                                     </div>
@@ -656,7 +665,16 @@ const OrdemDeServicoFormModal = ({
                                                 className="w-12 p-1 text-center border rounded text-xs"
                                                 min="1"
                                             />
-                                            <span className="text-xs font-semibold w-20 text-right">R$ {(part.price * part.quantity).toFixed(2)}</span>
+                                            <input
+                                                type="number"
+                                                value={part.price}
+                                                onChange={(e) => handleUpdatePartInOS(index, 'price', Number(e.target.value))}
+                                                className="w-20 p-1 text-right border rounded text-xs"
+                                                min="0"
+                                                step="0.01"
+                                                title="Editar valor unitário"
+                                            />
+                                            <span className="text-xs font-semibold w-24 text-right">R$ {(Number(part.price || 0) * Number(part.quantity || 0)).toFixed(2)}</span>
                                             <button type="button" onClick={() => handleRemovePartFromOS(index)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
                                         </div>
                                     </div>
@@ -834,22 +852,51 @@ const Orcamentos = ({ userId, ordensDeServico = [], clients = [], services = [],
     const handleSave = async osData => {
         try {
             const professional = mergedPros.find(p => p.id === osData.professionalId);
-            const osToSave = { ...osData, professionalName: professional ? professional.name : '' };
+            const osToSave = {
+                ...osData,
+                professionalName: professional ? professional.name : '',
+            };
 
-            // let savedOsId = osData.id; // Unused in Orcamentos
+            const ensureCreatedAt = currentOs ? osToSave : { ...osToSave, createdAt: serverTimestamp() };
+            let saved = false;
 
-            if (currentOs) {
-                await updateDoc(userDocRef(userId, 'ordens-de-servico', currentOs.id), osToSave)
-                    .catch(err => {
-                        console.warn("Erro update OS (possivel legado):", err);
-                        setNotification({ type: 'warning', message: 'Editando OS legada. Verifique se salvou.' });
-                    });
-                setNotification({ type: 'success', message: 'Atualizado!' });
-            } else {
-                await addDoc(userCollectionRef(userId, 'ordens-de-servico'), { ...osToSave, createdAt: serverTimestamp() });
-                setNotification({ type: 'success', message: 'Criado!' });
+            const saveNew = async () => {
+                if (currentOs) {
+                    await updateDoc(userDocRef(userId, 'ordens-de-servico', currentOs.id), ensureCreatedAt);
+                } else {
+                    await addDoc(userCollectionRef(userId, 'ordens-de-servico'), ensureCreatedAt);
+                }
+                saved = true;
+            };
+
+            const saveLegacy = async () => {
+                // fallback para colecao antiga
+                const legacyKey = 'ordens-de-servi\u00e7o';
+                if (currentOs) {
+                    await updateDoc(userDocRef(userId, legacyKey, currentOs.id), ensureCreatedAt);
+                } else {
+                    await addDoc(userCollectionRef(userId, legacyKey), ensureCreatedAt);
+                }
+                saved = true;
+            };
+
+            try {
+                await saveNew();
+            } catch (err) {
+                console.warn('Erro ao salvar na cole\u00e7\u00e3o nova, tentando legado:', err);
+                try {
+                    await saveLegacy();
+                    setNotification({ type: 'warning', message: 'Salvo em cole\u00e7\u00e3o legada. Verifique integra\u00e7\u00f5es.' });
+                } catch (legacyErr) {
+                    console.error('Falha ao salvar OS em ambas cole\u00e7\u00f5es:', legacyErr);
+                    setNotification({ type: 'error', message: 'Erro ao salvar OS.' });
+                    return false;
+                }
             }
 
+            if (saved) {
+                setNotification({ type: 'success', message: currentOs ? 'Atualizado!' : 'Criado!' });
+            }
             return true;
         } catch (error) {
             console.error(error);

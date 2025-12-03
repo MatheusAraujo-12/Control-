@@ -977,6 +977,7 @@ export default function App() {
             clients={clients}
             services={services}
             professionals={professionals}
+            appSettings={appSettings}
             setNotification={notify}
           />
         );

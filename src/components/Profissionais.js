@@ -14,7 +14,7 @@ const resolveDateString = (value) => {
     return '';
 };
 
-const Profissionais = ({ userId, professionals = [], transactions = [], setNotification, initialTab = 'list' }) => {
+const Profissionais = ({ userId, professionals = [], transactions = [], setNotification }) => {
     // Dados de profissionais
     const [fetchedProfessionals, setFetchedProfessionals] = useState([]);
     const [mergedProfessionals, setMergedProfessionals] = useState([]);
@@ -24,8 +24,7 @@ const Profissionais = ({ userId, professionals = [], transactions = [], setNotif
     const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
     const [professionalToDelete, setProfessionalToDelete] = useState(null);
 
-    // Abas e filtros
-    const [activeTab, setActiveTab] = useState(initialTab === 'payments' ? 'payments' : 'list'); // 'list' | 'payments'
+    // Filtros de pagamento
     const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
     const [dateRange, setDateRange] = useState({
         start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -69,10 +68,6 @@ const Profissionais = ({ userId, professionals = [], transactions = [], setNotif
         unique.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         setMergedProfessionals(unique);
     }, [professionals, fetchedProfessionals]);
-
-    useEffect(() => {
-        setActiveTab(initialTab === 'payments' ? 'payments' : 'list');
-    }, [initialTab]);
 
     useEffect(() => {
         if (currentProfessional) {
@@ -232,149 +227,137 @@ const Profissionais = ({ userId, professionals = [], transactions = [], setNotif
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Gestao de Profissionais</h1>
-                <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
-                    <button
-                        onClick={() => setActiveTab('list')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                            activeTab === 'list'
-                                ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-white'
-                                : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                    >
-                        Lista
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('payments')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                            activeTab === 'payments'
-                                ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-white'
-                                : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                    >
-                        Pagamentos
-                    </button>
+        <div className="space-y-10">
+            <div className="flex flex-wrap justify-between items-center gap-3">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Gestao de Profissionais</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Cadastre a equipe e registre pagamentos de RH.</p>
                 </div>
+                <Button onClick={() => { setCurrentProfessional(null); setIsModalOpen(true); }} icon={<Plus size={18} />}>
+                    Novo Profissional
+                </Button>
             </div>
 
-            {activeTab === 'list' ? (
-                <>
-                    <div className="flex justify-end">
-                        <Button onClick={() => { setCurrentProfessional(null); setIsModalOpen(true); }} icon={<Plus size={18} />}>
-                            Novo Profissional
-                        </Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {mergedProfessionals.length === 0 && (
-                            <div className="col-span-full text-center text-gray-500 py-8">Nenhum profissional cadastrado.</div>
-                        )}
-                        {mergedProfessionals.map((pro) => (
-                            <div
-                                key={pro.id}
-                                className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-l-4 border-blue-500 hover:shadow-lg transition-shadow"
-                            >
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <h3 className="text-xl font-bold text-gray-800 dark:text-white">{pro.name}</h3>
-                                        <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                            {pro.role}
-                                        </span>
-                                    </div>
-                                    <div className="flex space-x-2">
-                                        <button
-                                            onClick={() => { setCurrentProfessional(pro); setIsModalOpen(true); }}
-                                            className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50"
-                                        >
-                                            <Edit size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteClick(pro.id)}
-                                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </div>
+            {/* Lista de profissionais */}
+            <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Equipe cadastrada</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {mergedProfessionals.length === 0 && (
+                        <div className="col-span-full text-center text-gray-500 py-8">Nenhum profissional cadastrado.</div>
+                    )}
+                    {mergedProfessionals.map((pro) => (
+                        <div
+                            key={pro.id}
+                            className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-l-4 border-blue-500 hover:shadow-lg transition-shadow"
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">{pro.name}</h3>
+                                    <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                        {pro.role}
+                                    </span>
                                 </div>
-
-                                <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                                    <div className="flex items-center gap-2">
-                                        <Phone size={16} className="text-gray-400" /> {pro.phone || 'Sem telefone'}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Mail size={16} className="text-gray-400" /> {pro.email || 'Sem e-mail'}
-                                    </div>
+                                <div className="flex space-x-2">
+                                    <button
+                                        onClick={() => { setCurrentProfessional(pro); setIsModalOpen(true); }}
+                                        className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50"
+                                    >
+                                        <Edit size={18} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteClick(pro.id)}
+                                        className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </>
-            ) : (
-                <div className="space-y-6">
-                    {/* Filtros de Pagamentos */}
-                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-wrap gap-4 items-end">
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Profissional</label>
-                            <select
-                                className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white"
-                                value={selectedProfessionalId}
-                                onChange={(e) => setSelectedProfessionalId(e.target.value)}
-                            >
-                                <option value="">Todos</option>
-                                {mergedProfessionals.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">De</label>
-                            <Input
-                                type="date"
-                                value={dateRange.start}
-                                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ate</label>
-                            <Input
-                                type="date"
-                                value={dateRange.end}
-                                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                            />
-                        </div>
-                    </div>
 
-                    {/* Resumo e ação */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
-                            <h4 className="text-sm text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider">
-                                Total pago no periodo
-                            </h4>
-                            <p className="text-2xl font-bold text-blue-800 dark:text-blue-200 mt-1">
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaidInPeriod)}
-                            </p>
+                            <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                                <div className="flex items-center gap-2">
+                                    <Phone size={16} className="text-gray-400" /> {pro.phone || 'Sem telefone'}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Mail size={16} className="text-gray-400" /> {pro.email || 'Sem e-mail'}
+                                </div>
+                            </div>
                         </div>
-                        <div className="md:col-span-2 flex items-center justify-end">
-                            <Button
-                                onClick={() => {
-                                    setPaymentData((prev) => ({ ...prev, amount: '' }));
-                                    setIsPaymentModalOpen(true);
-                                }}
-                                disabled={!selectedProfessionalId}
-                                icon={<DollarSign size={18} />}
-                            >
-                                Registrar Pagamento
-                            </Button>
-                        </div>
-                    </div>
+                    ))}
+                </div>
+            </section>
 
-                    {/* Tabela de Pagamentos */}
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-                        <table className="w-full text-left text-sm">
+            {/* Pagamentos RH */}
+            <section className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Pagamentos RH</h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Filtre e registre pagamentos por profissional e período.</p>
+                    </div>
+                    <Button
+                        onClick={() => {
+                            setPaymentData((prev) => ({ ...prev, amount: '' }));
+                            setIsPaymentModalOpen(true);
+                        }}
+                        disabled={!selectedProfessionalId}
+                        icon={<DollarSign size={18} />}
+                    >
+                        Registrar Pagamento
+                    </Button>
+                </div>
+
+                {/* Filtros de Pagamentos */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-wrap gap-4 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Profissional</label>
+                        <select
+                            className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white"
+                            value={selectedProfessionalId}
+                            onChange={(e) => setSelectedProfessionalId(e.target.value)}
+                        >
+                            <option value="">Todos</option>
+                            {mergedProfessionals.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">De</label>
+                        <Input
+                            type="date"
+                            value={dateRange.start}
+                            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ate</label>
+                        <Input
+                            type="date"
+                            value={dateRange.end}
+                            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                        />
+                    </div>
+                </div>
+
+                {/* Resumo */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                        <h4 className="text-sm text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider">
+                            Total pago no periodo
+                        </h4>
+                        <p className="text-2xl font-bold text-blue-800 dark:text-blue-200 mt-1">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaidInPeriod)}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Tabela de Pagamentos */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm min-w-[640px]">
                             <thead className="bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-200 uppercase text-xs">
                                 <tr>
                                     <th className="p-4">Data</th>
@@ -422,7 +405,7 @@ const Profissionais = ({ userId, professionals = [], transactions = [], setNotif
                         </table>
                     </div>
                 </div>
-            )}
+            </section>
 
             {/* Modal de cadastro/edicao de profissional */}
             <Modal

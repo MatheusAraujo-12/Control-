@@ -7,7 +7,7 @@ import { Input } from './ui/Input';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { Edit, Plus, Trash2, Wrench, DollarSign, Printer, Car, User, Package, Search, X, Save, FileText, CreditCard } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // --- Componentes de UI Auxiliares ---
 
@@ -270,7 +270,7 @@ const emptyOrdemDeServico = {
 
 const OrdemDeServicoFormModal = ({
     isOpen, onClose, os, onSave, onDelete,
-    clients, services, parts, professionals, userId, setNotification,
+    clients, services, parts, professionals, userId, setNotification, appSettings,
     onQuickCreateClient, onQuickCreateService, onQuickCreatePart,
     onEditService, onDeleteService, onEditPart, onDeletePart
 }) => {
@@ -430,39 +430,114 @@ const OrdemDeServicoFormModal = ({
         }
     };
 
-    const generatePDF = () => {
+    const fetchImageAsDataUrl = async (url) => {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (err) {
+            console.warn('Falha ao carregar logo para PDF:', err);
+            return null;
+        }
+    };
+
+    const generatePDF = async () => {
         const doc = new jsPDF();
-        doc.setFontSize(20);
-        doc.text(formData.type === 'Orcamento' ? 'ORÇAMENTO' : 'ORDEM DE SERVIÇO', 105, 20, { align: 'center' });
-        doc.setFontSize(12);
-        doc.text(`Cliente: ${formData.clientName || 'N/A'}`, 20, 40);
-        doc.text(`Veículo: ${formData.vehicleBrand || ''} ${formData.vehicleModel || ''} - ${formData.vehiclePlate || ''}`, 20, 50);
-        doc.text(`Cor: ${formData.vehicleColor || 'N/A'}`, 20, 60);
-        doc.text(`Data: ${new Date().toLocaleDateString()}`, 150, 40);
+        const logo = appSettings?.logoUrl ? await fetchImageAsDataUrl(appSettings.logoUrl) : null;
 
-        const servicesData = formData.services.map(s => [s.name, s.quantity, `R$ ${Number(s.price).toFixed(2)}`]);
-        doc.autoTable({ startY: 70, head: [['Serviço', 'Qtd', 'Preço Unit.']], body: servicesData, theme: 'grid' });
+        if (logo) {
+            try { doc.addImage(logo, 'PNG', 15, 10, 25, 25); } catch (e) { console.warn('Erro ao inserir logo no PDF:', e); }
+        }
+        doc.setFontSize(16);
+        doc.text(appSettings?.companyName || 'Control+ Oficina', 45, 16);
+        doc.setFontSize(10);
+        const headerLines = [
+            appSettings?.companyDocument ? `CNPJ/CPF: ${appSettings.companyDocument}` : null,
+            appSettings?.companyEmail ? `Email: ${appSettings.companyEmail}` : null,
+            appSettings?.companyPhone ? `Telefone: ${appSettings.companyPhone}` : null,
+            appSettings?.companyAddress ? `Endereço: ${appSettings.companyAddress}` : null,
+        ].filter(Boolean);
+        headerLines.forEach((line, idx) => doc.text(line, 45, 22 + idx * 5));
 
-        let finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(18);
+        doc.text(formData.type === 'Orcamento' ? 'ORÇAMENTO' : 'ORDEM DE SERVIÇO', 105, 40, { align: 'center' });
+
+        doc.setFontSize(11);
+        const dataBaseY = 50;
+        doc.text(`OS ID: ${os?.id || '(novo)'}`, 15, dataBaseY);
+        doc.text(`Data: ${new Date().toLocaleDateString()}`, 140, dataBaseY);
+        doc.text(`Cliente: ${formData.clientName || 'N/A'}`, 15, dataBaseY + 7);
+        doc.text(`Veículo: ${formData.vehicleBrand || ''} ${formData.vehicleModel || ''} - ${formData.vehiclePlate || ''}`, 15, dataBaseY + 14);
+        doc.text(`Cor: ${formData.vehicleColor || 'N/A'}`, 15, dataBaseY + 21);
+        doc.text(`Profissional: ${formData.professionalName || 'N/A'}`, 15, dataBaseY + 28);
+
+        const servicesData = formData.services.map(s => [
+            s.name,
+            s.quantity,
+            `R$ ${Number(s.price || 0).toFixed(2)}`,
+            `R$ ${(Number(s.price || 0) * Number(s.quantity || 0)).toFixed(2)}`
+        ]);
+        autoTable(doc, { startY: dataBaseY + 36, head: [['Serviço', 'Qtd', 'Preço Unit.', 'Subtotal']], body: servicesData, theme: 'grid' });
+
+        let finalY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 8 : dataBaseY + 45;
+
         if (formData.parts.length > 0) {
-            doc.text('Peças:', 20, finalY);
-            const partsData = formData.parts.map(p => [p.name, p.quantity, `R$ ${Number(p.price).toFixed(2)}`]);
-            doc.autoTable({ startY: finalY + 5, head: [['Peça', 'Qtd', 'Preço Unit.']], body: partsData, theme: 'grid' });
-            finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(12);
+            doc.text('Peças:', 15, finalY);
+            const partsData = formData.parts.map(p => [
+                p.name,
+                p.quantity,
+                `R$ ${Number(p.price || 0).toFixed(2)}`,
+                `R$ ${(Number(p.price || 0) * Number(p.quantity || 0)).toFixed(2)}`
+            ]);
+            autoTable(doc, { startY: finalY + 4, head: [['Peça', 'Qtd', 'Preço Unit.', 'Subtotal']], body: partsData, theme: 'grid' });
+            finalY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 8 : finalY + 20;
+        }
+
+        const payments = formData.payments || [];
+        if (payments.length > 0) {
+            doc.setFontSize(12);
+            doc.text('Pagamentos:', 15, finalY);
+            const payData = payments.map(p => [
+                p.date || '',
+                p.method || p.paymentMethod || '',
+                `R$ ${Number(p.amount || 0).toFixed(2)}`,
+                p.notes || ''
+            ]);
+            autoTable(doc, { startY: finalY + 4, head: [['Data', 'Método', 'Valor', 'Notas']], body: payData, theme: 'grid' });
+            finalY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 8 : finalY + 18;
         }
 
         if (formData.laborDescription) {
-            doc.text('Detalhes da Mão de Obra:', 20, finalY);
+            doc.setFontSize(12);
+            doc.text('Detalhes / Mão de Obra:', 15, finalY);
             doc.setFontSize(10);
-            const splitText = doc.splitTextToSize(formData.laborDescription, 170);
-            doc.text(splitText, 20, finalY + 7);
+            const splitText = doc.splitTextToSize(formData.laborDescription, 180);
+            doc.text(splitText, 15, finalY + 6);
             finalY += (splitText.length * 5) + 10;
         }
 
-        doc.setFontSize(14);
-        doc.text(`Total: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.totalPrice)}`, 140, finalY + 10);
-        doc.save(`${formData.type}_${formData.clientName}.pdf`);
-    };
+        const servicesTotal = formData.services.reduce((acc, s) => acc + Number(s.price || 0) * Number(s.quantity || 0), 0);
+        const partsTotal = formData.parts.reduce((acc, p) => acc + Number(p.price || 0) * Number(p.quantity || 0), 0);
+        const totalPaid = (formData.payments || []).reduce((acc, p) => acc + Number(p.amount || 0), 0);
+        const remaining = Number(formData.totalPrice || 0) - totalPaid;
+
+        doc.setFontSize(12);
+        const totalsY = finalY + 6;
+        doc.text(`Serviços: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(servicesTotal)}`, 15, totalsY);
+        doc.text(`Peças: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(partsTotal)}`, 15, totalsY + 6);
+        doc.text(`Total OS: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.totalPrice || servicesTotal + partsTotal)}`, 15, totalsY + 12);
+        doc.text(`Pago: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaid)}`, 120, totalsY);
+        doc.text(`Restante: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(remaining)}`, 120, totalsY + 6);
+        doc.text(`Status: ${formData.status}`, 120, totalsY + 12);
+
+        doc.save(`${formData.type || 'OS'}_${formData.clientName || 'cliente'}.pdf`);
+    };;
 
     const selectedClient = clients.find(c => c.id === formData.clientId);
     const totalPaid = (formData.payments || []).reduce((acc, p) => acc + Number(p.amount || 0), 0);
@@ -577,7 +652,16 @@ const OrdemDeServicoFormModal = ({
                                                 className="w-12 p-1 text-center border rounded text-xs"
                                                 min="1"
                                             />
-                                            <span className="text-xs font-semibold w-20 text-right">R$ {(service.price * service.quantity).toFixed(2)}</span>
+                                            <input
+                                                type="number"
+                                                value={service.price}
+                                                onChange={(e) => handleUpdateServiceInOS(index, 'price', Number(e.target.value))}
+                                                className="w-20 p-1 text-right border rounded text-xs"
+                                                min="0"
+                                                step="0.01"
+                                                title="Editar valor unitário"
+                                            />
+                                            <span className="text-xs font-semibold w-24 text-right">R$ {(Number(service.price || 0) * Number(service.quantity || 0)).toFixed(2)}</span>
                                             <button type="button" onClick={() => handleRemoveServiceFromOS(index)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
                                         </div>
                                     </div>
@@ -612,7 +696,16 @@ const OrdemDeServicoFormModal = ({
                                                 className="w-12 p-1 text-center border rounded text-xs"
                                                 min="1"
                                             />
-                                            <span className="text-xs font-semibold w-20 text-right">R$ {(part.price * part.quantity).toFixed(2)}</span>
+                                            <input
+                                                type="number"
+                                                value={part.price}
+                                                onChange={(e) => handleUpdatePartInOS(index, 'price', Number(e.target.value))}
+                                                className="w-20 p-1 text-right border rounded text-xs"
+                                                min="0"
+                                                step="0.01"
+                                                title="Editar valor unitário"
+                                            />
+                                            <span className="text-xs font-semibold w-24 text-right">R$ {(Number(part.price || 0) * Number(part.quantity || 0)).toFixed(2)}</span>
                                             <button type="button" onClick={() => handleRemovePartFromOS(index)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
                                         </div>
                                     </div>
@@ -709,7 +802,7 @@ const OrdemDeServicoFormModal = ({
     );
 };
 
-const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services = [], professionals = [], setNotification }) => {
+const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services = [], professionals = [], appSettings = {}, setNotification }) => {
     // Estados para dados internos (Novas coleções)
     const [fetchedOS, setFetchedOS] = useState([]);
     const [fetchedClients, setFetchedClients] = useState([]);
@@ -736,7 +829,7 @@ const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services 
         if (!userId) return;
 
         // OS
-        const unsubOS = onSnapshot(query(userCollectionRef(userId, 'ordens-de-serviço'), orderBy('createdAt', 'desc')),
+        const unsubOS = onSnapshot(query(userCollectionRef(userId, 'ordens-de-servico'), orderBy('createdAt', 'desc')),
             s => setFetchedOS(s.docs.map(d => ({ id: d.id, ...d.data() }))),
             e => console.error("Erro OS:", e)
         );
@@ -786,40 +879,59 @@ const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services 
             let savedOsId = osData.id;
 
             if (currentOs) {
-                await updateDoc(userDocRef(userId, 'ordens-de-serviço', currentOs.id), osToSave)
+                await updateDoc(userDocRef(userId, 'ordens-de-servico', currentOs.id), osToSave)
                     .catch(err => {
                         console.warn("Erro update OS (possivel legado):", err);
                         setNotification({ type: 'warning', message: 'Editando OS legada. Verifique se salvou.' });
                     });
                 setNotification({ type: 'success', message: 'Atualizado!' });
             } else {
-                const docRef = await addDoc(userCollectionRef(userId, 'ordens-de-serviço'), { ...osToSave, createdAt: serverTimestamp() });
+                const docRef = await addDoc(userCollectionRef(userId, 'ordens-de-servico'), { ...osToSave, createdAt: serverTimestamp() });
                 savedOsId = docRef.id;
                 setNotification({ type: 'success', message: 'Criado!' });
             }
 
-            // Integração Financeira
+            // Integração Financeira -> transactions
             if (savedOsId && osToSave.type === 'OS') {
                 try {
-                    // 1. Remover lançamentos antigos dessa OS
-                    const finQuery = query(userCollectionRef(userId, 'financeiro'), where('osId', '==', savedOsId));
+                    // Remover lançamentos antigos apenas na coleção nova
+                    const finQuery = query(userCollectionRef(userId, 'transactions'), where('osId', '==', savedOsId));
                     const finDocs = await getDocs(finQuery);
                     const deletePromises = finDocs.docs.map(d => deleteDoc(d.ref));
                     await Promise.all(deletePromises);
 
-                    // 2. Adicionar novos lançamentos
+                    // Adicionar novos lançamentos
                     if (osToSave.payments && osToSave.payments.length > 0) {
-                        const addPromises = osToSave.payments.map(payment =>
-                            addDoc(userCollectionRef(userId, 'financeiro'), {
-                                type: 'Receita',
-                                description: `Pagamento OS #${savedOsId.slice(0, 5)}... - ${osToSave.clientName}`,
+                        const addPromises = osToSave.payments.map(payment => {
+                            const basePayload = {
+                                description: `Pagamento OS ${savedOsId.slice(0, 5)}... - ${osToSave.clientName}`,
                                 amount: Number(payment.amount),
-                                date: payment.date,
-                                category: 'Serviços',
+                                totalAmount: Number(payment.amount),
+                                date: payment.date || new Date().toISOString().split('T')[0],
+                                category: 'Ordens de Servico',
                                 osId: savedOsId,
+                                clientId: osToSave.clientId || '',
+                                clientName: osToSave.clientName || '',
+                                professionalId: osToSave.professionalId || '',
+                                professionalName: osToSave.professionalName || '',
+                                paymentMethod: payment.method || payment.paymentMethod || '',
                                 createdAt: serverTimestamp()
-                            })
-                        );
+                            };
+
+                            const addNew = addDoc(userCollectionRef(userId, 'transactions'), {
+                                ...basePayload,
+                                type: 'income',
+                                status: 'paid'
+                            });
+
+                            const addLegacy = addDoc(userCollectionRef(userId, 'financeiro'), {
+                                ...basePayload,
+                                type: 'Receita',
+                                status: 'Pago'
+                            }).catch(err => console.warn('Falha ao salvar em financeiro legado:', err));
+
+                            return Promise.allSettled([addNew, addLegacy]);
+                        });
                         await Promise.all(addPromises);
                     }
                 } catch (err) {
@@ -838,7 +950,7 @@ const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services 
 
     const handleDelete = async (osId) => {
         try {
-            await deleteDoc(userDocRef(userId, 'ordens-de-serviço', osId))
+            await deleteDoc(userDocRef(userId, 'ordens-de-servico', osId))
                 .catch(err => console.warn("Erro delete OS:", err));
 
             // Remover financeiro associado
@@ -1006,6 +1118,7 @@ const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services 
                 professionals={mergedPros}
                 userId={userId}
                 setNotification={setNotification}
+                appSettings={appSettings}
                 onQuickCreateClient={handleQuickCreateClient}
                 onQuickCreateService={handleQuickCreateService}
                 onQuickCreatePart={handleQuickCreatePart}
@@ -1019,3 +1132,5 @@ const OrdensDeServico = ({ userId, ordensDeServico = [], clients = [], services 
 };
 
 export default OrdensDeServico;
+
+
