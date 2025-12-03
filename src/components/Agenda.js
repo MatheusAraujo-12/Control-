@@ -1,520 +1,364 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { addDoc, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { addDoc, updateDoc, deleteDoc, query, onSnapshot, orderBy, serverTimestamp } from 'firebase/firestore';
 import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Clock, Plus, XCircle, Coins, Calendar as CalendarIcon, Hash, Car, ClipboardList } from 'lucide-react';
+import { Calendar, Clock, User, Car, FileText, Plus, Edit, Trash2, Search, X } from 'lucide-react';
 
-const statusOptions = [
-    { value: 'agendado', label: 'Agendado' },
-    { value: 'em_execucao', label: 'Em execução' },
-    { value: 'aguardando_pecas', label: 'Aguardando peças' },
-    { value: 'pronto', label: 'Pronto para entrega' },
-    { value: 'finalizado', label: 'Finalizado' },
-];
+// --- Componentes Auxiliares (Reutilizados de Orcamentos) ---
 
-const statusColors = {
-    agendado: 'bg-blue-200 border-blue-500 text-blue-800',
-    em_execucao: 'bg-yellow-200 border-yellow-500 text-yellow-800',
-    aguardando_pecas: 'bg-orange-200 border-orange-500 text-orange-800',
-    pronto: 'bg-indigo-200 border-indigo-500 text-indigo-800',
-    finalizado: 'bg-green-200 border-green-500 text-green-800',
-};
+const SectionHeader = ({ icon: Icon, title, action }) => (
+  <div className="flex items-center justify-between mb-3 border-b pb-1 border-gray-200 dark:border-gray-700">
+    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-semibold">
+      {Icon && <Icon size={18} className="text-blue-600 dark:text-blue-400" />}
+      <span>{title}</span>
+    </div>
+    {action}
+  </div>
+);
 
-const getStatusLabel = status => statusOptions.find(option => option.value === status)?.label || 'Agendado';
+const SearchableSelect = ({ options, onSelect, onCreate, placeholder, label, icon: Icon }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const wrapperRef = useRef(null);
 
-const CheckoutModal = ({ isOpen, onClose, appointment, onProcess }) => {
-    const [partsCost, setPartsCost] = useState(0);
-    const [paymentMethod, setPaymentMethod] = useState('pix');
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-    useEffect(() => {
-        if (isOpen) {
-            setPartsCost(appointment.partsCost || 0);
-            setPaymentMethod(appointment.paymentMethod || 'pix');
-        }
-    }, [isOpen, appointment.partsCost, appointment.paymentMethod]);
+  const filteredOptions = options.filter(opt => opt.name.toLowerCase().includes(search.toLowerCase()));
 
-    const totalServiceAmount = appointment.services?.reduce((sum, service) => sum + service.price, 0) || 0;
-    const total = totalServiceAmount + parseFloat(partsCost || 0);
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Fechamento da ordem de serviço">
-            <div className="space-y-4">
-                <p><strong>Cliente:</strong> {appointment.clientName}</p>
-                <p><strong>Veículo:</strong> {appointment.vehiclePlate || 'Não informado'}</p>
-                <div className="space-y-1">
-                    {appointment.services?.map(service => (
-                        <p key={service.id}><strong>Serviço:</strong> {service.name} - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.price)}</p>
-                    ))}
-                </div>
-                <p><strong>Mão de obra:</strong> {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalServiceAmount)}</p>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Valor de peças</label>
-                    <Input type="number" value={partsCost} onChange={event => setPartsCost(event.target.value)} placeholder="0,00" icon={<Coins size={18} />} />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Forma de pagamento</label>
-                    <select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                        <option value="pix">PIX</option>
-                        <option value="dinheiro">Dinheiro</option>
-                        <option value="credito">Cartão de crédito</option>
-                        <option value="debito">Cartão de débito</option>
-                        <option value="transferencia">Transferência</option>
-                    </select>
-                </div>
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-xl font-bold text-right">Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}</p>
-                </div>
-                <div className="flex justify-end space-x-3 pt-4">
-                    <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button variant="success" onClick={() => onProcess({ partsCost, paymentMethod })}>Confirmar faturamento</Button>
-                </div>
+  return (
+    <div className="relative" ref={wrapperRef}>
+      {label && <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">{label}</label>}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          {Icon && <Icon size={16} className="text-gray-400" />}
+        </div>
+        <input
+          type="text"
+          className="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+          placeholder={placeholder}
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setIsOpen(true); }}
+          onFocus={() => setIsOpen(true)}
+        />
+      </div>
+      {isOpen && search && (
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto">
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((option) => (
+              <div key={option.id} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm" onClick={() => { onSelect(option); setSearch(''); setIsOpen(false); }}>
+                <div className="font-medium text-gray-800 dark:text-gray-200">{option.name}</div>
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-center">
+              <button onClick={() => { onCreate(search); setSearch(''); setIsOpen(false); }} className="text-sm text-blue-600 hover:underline flex items-center justify-center gap-1 w-full">
+                <Plus size={14} /> Criar "{search}"
+              </button>
             </div>
-        </Modal>
-    );
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
-const AppointmentModal = ({ isOpen, onClose, appointment, onSave, clients, professionals, services, selectedTime, setNotification, userId }) => {
-    const buildDefaultAppointment = useCallback(() => ({
+// --- Modal de Agendamento ---
+
+const AppointmentModal = ({ isOpen, onClose, appointment, onSave, onDelete, clients, userId }) => {
+  const [formData, setFormData] = useState({
+    clientId: '',
+    clientName: '',
+    vehiclePlate: '',
+    vehicleModel: '',
+    date: '',
+    time: '',
+    notes: '',
+    status: 'Pendente'
+  });
+
+  useEffect(() => {
+    if (appointment) {
+      setFormData(appointment);
+    } else {
+      setFormData({
         clientId: '',
-        professionalId: '',
-        services: [],
-        date: selectedTime || new Date().toISOString(),
-        status: 'agendado',
-        vehicleBrand: '',
-        vehicleModel: '',
+        clientName: '',
         vehiclePlate: '',
+        vehicleModel: '',
+        date: new Date().toISOString().split('T')[0],
+        time: '08:00',
         notes: '',
-        partsCost: 0,
-        paymentMethod: 'pix',
-    }), [selectedTime]);
+        status: 'Pendente'
+      });
+    }
+  }, [appointment, isOpen]);
 
-    const [formData, setFormData] = useState(() => buildDefaultAppointment());
-    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const handleClientSelect = (client) => {
+    setFormData(prev => ({ ...prev, clientId: client.id, clientName: client.name }));
+  };
 
-    useEffect(() => {
-        if (appointment) {
-            setFormData({ ...buildDefaultAppointment(), ...appointment, services: appointment.services || [] });
-        } else {
-            setFormData(buildDefaultAppointment());
-        }
-    }, [appointment, isOpen, buildDefaultAppointment]);
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(formData);
+    onClose();
+  };
 
-    const handleChange = event => {
-        const { name, value } = event.target;
-        if (name === 'clientId') {
-            const selectedClient = clients.find(client => client.id === value);
-            setFormData(prev => ({
-                ...prev,
-                clientId: value,
-                vehicleBrand: selectedClient?.vehicleBrand || '',
-                vehicleModel: selectedClient?.vehicleModel || '',
-                vehiclePlate: selectedClient?.vehiclePlate || '',
-            }));
-            return;
-        }
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
+  const selectedClient = clients.find(c => c.id === formData.clientId);
 
-    const addService = serviceId => {
-        const serviceToAdd = services.find(service => service.id === serviceId);
-        if (serviceToAdd && !formData.services.some(service => service.id === serviceId)) {
-            setFormData(prev => ({ ...prev, services: [...prev.services, serviceToAdd] }));
-        }
-    };
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={appointment ? "Editar Agendamento" : "Novo Agendamento"}>
+      <form onSubmit={handleSubmit} className="space-y-6">
 
-    const removeService = serviceId => {
-        setFormData(prev => ({ ...prev, services: prev.services.filter(service => service.id !== serviceId) }));
-    };
+        {/* Cliente */}
+        <div>
+          <SectionHeader icon={User} title="Cliente" />
+          {formData.clientId ? (
+            <div className="flex items-center justify-between p-2 border rounded-md bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+              <span className="font-medium text-blue-800 dark:text-blue-200">{formData.clientName}</span>
+              <button type="button" onClick={() => setFormData({ ...formData, clientId: '', clientName: '', vehiclePlate: '', vehicleModel: '' })} className="text-blue-600 hover:text-blue-800 p-1">
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <SearchableSelect
+              options={clients}
+              onSelect={handleClientSelect}
+              onCreate={(name) => handleClientSelect({ id: 'temp_' + Date.now(), name })} // Simplificado para exemplo
+              placeholder="Buscar cliente..."
+              icon={Search}
+            />
+          )}
+        </div>
 
-    const totalAppointmentPrice = useMemo(() => formData.services?.reduce((sum, service) => sum + service.price, 0) || 0, [formData.services]);
+        {/* Veículo */}
+        <div>
+          <SectionHeader icon={Car} title="Veículo" />
+          {selectedClient && (selectedClient.vehicles || []).length > 0 && (
+            <div className="mb-2">
+              <select
+                className="w-full text-sm p-2 border rounded bg-white dark:bg-gray-700"
+                onChange={(e) => {
+                  const v = selectedClient.vehicles.find(v => v.plate === e.target.value);
+                  if (v) setFormData(prev => ({ ...prev, vehicleModel: v.model, vehiclePlate: v.plate }));
+                }}
+                value={formData.vehiclePlate}
+              >
+                <option value="">Selecione um veículo cadastrado...</option>
+                {selectedClient.vehicles.map((v, i) => <option key={i} value={v.plate}>{v.model} - {v.plate}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              placeholder="Modelo"
+              value={formData.vehicleModel}
+              onChange={e => setFormData({ ...formData, vehicleModel: e.target.value })}
+            />
+            <Input
+              placeholder="Placa"
+              value={formData.vehiclePlate}
+              onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value })}
+            />
+          </div>
+        </div>
 
-    const handleSubmit = event => {
-        event.preventDefault();
-        const client = clients.find(c => c.id === formData.clientId);
-        const professional = professionals.find(p => p.id === formData.professionalId);
+        {/* Data e Hora */}
+        <div>
+          <SectionHeader icon={Calendar} title="Data e Hora" />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="date"
+              value={formData.date}
+              onChange={e => setFormData({ ...formData, date: e.target.value })}
+              required
+            />
+            <Input
+              type="time"
+              value={formData.time}
+              onChange={e => setFormData({ ...formData, time: e.target.value })}
+              required
+            />
+          </div>
+        </div>
 
-        if (!client || !professional || formData.services.length === 0) {
-            setNotification({ show: true, message: 'Selecione cliente, técnico e pelo menos um serviço.', type: 'error' });
-            return;
-        }
+        {/* Observações */}
+        <div>
+          <SectionHeader icon={FileText} title="Observações" />
+          <textarea
+            className="w-full p-2 text-sm border rounded-md bg-gray-50 dark:bg-gray-700 h-20 resize-none focus:ring-1 focus:ring-blue-500"
+            placeholder="Detalhes do serviço..."
+            value={formData.notes}
+            onChange={e => setFormData({ ...formData, notes: e.target.value })}
+          />
+        </div>
 
-        onSave({
-            ...formData,
-            clientName: client.name,
-            professionalName: professional.name,
-            totalPrice: totalAppointmentPrice,
-        });
-    };
+        {/* Status */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
+          <div className="flex gap-2">
+            {['Pendente', 'Confirmado', 'Concluído', 'Cancelado'].map(status => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setFormData({ ...formData, status })}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${formData.status === status
+                  ? 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-200'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                  }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+        </div>
 
-    const handleProcessCheckout = async checkoutData => {
-        if (!appointment || !appointment.id) {
-            setNotification({ show: true, message: 'Salve o agendamento antes de faturar.', type: 'error' });
-            return;
-        }
-
-        const totalServiceAmount = totalAppointmentPrice;
-        const parsedPartsCost = parseFloat(checkoutData.partsCost || 0);
-        const totalAmount = totalServiceAmount + parsedPartsCost;
-
-        const totalCommission = formData.services.reduce((sum, service) => {
-            if (service.commissionType === 'percentage') {
-                return sum + service.price * (service.commissionValue / 100);
-            }
-            return sum + service.commissionValue;
-        }, 0);
-
-        const transactionData = {
-            appointmentId: appointment.id,
-            clientId: appointment.clientId,
-            clientName: appointment.clientName,
-            professionalId: appointment.professionalId,
-            professionalName: appointment.professionalName,
-            services: formData.services,
-            vehiclePlate: appointment.vehiclePlate,
-            date: new Date().toISOString(),
-            totalAmount,
-            serviceAmount: totalServiceAmount,
-            partsCost: parsedPartsCost,
-            commission: totalCommission,
-            paymentMethod: checkoutData.paymentMethod,
-            type: 'receita',
-        };
-
-        if (!userId) {
-            setNotification({ show: true, message: 'Sessao expirada. Faça login novamente.', type: 'error' });
-            return;
-        }
-
-        try {
-            await addDoc(userCollectionRef(userId, 'transactions'), transactionData);
-            await updateDoc(userDocRef(userId, 'appointments', appointment.id), {
-                status: 'finalizado',
-                paymentMethod: checkoutData.paymentMethod,
-                partsCost: parsedPartsCost,
-                totalPrice: totalAmount,
-                closedAt: new Date().toISOString(),
-            });
-            setIsCheckoutOpen(false);
-            onClose();
-            setNotification({ show: true, message: 'Ordem faturada com sucesso!', type: 'success' });
-        } catch (error) {
-            console.error('Erro ao processar faturamento:', error);
-            setNotification({ show: true, message: 'Não foi possível finalizar o faturamento.', type: 'error' });
-        }
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={appointment ? 'Detalhes da ordem de serviço' : 'Novo agendamento'}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <select name="clientId" value={formData.clientId || ''} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                    <option value="">Selecione um cliente</option>
-                    {clients.map(client => (
-                        <option key={client.id} value={client.id}>{client.name}</option>
-                    ))}
-                </select>
-                <select name="professionalId" value={formData.professionalId || ''} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                    <option value="">Selecione um técnico</option>
-                    {professionals.map(professional => (
-                        <option key={professional.id} value={professional.id}>{professional.name}</option>
-                    ))}
-                </select>
-                <Input type="datetime-local" name="date" value={formData.date ? new Date(formData.date).toISOString().substring(0, 16) : ''} onChange={handleChange} icon={<CalendarIcon size={18} />} />
-                <div>
-                    <label className="block text-sm font-medium">Status da ordem</label>
-                    <select name="status" value={formData.status} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                        {statusOptions.map(status => (
-                            <option key={status.value} value={status.value}>{status.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca" icon={<Car size={18} />} />
-                    <Input name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} placeholder="Modelo" icon={<ClipboardList size={18} />} />
-                    <Input name="vehiclePlate" value={formData.vehiclePlate} onChange={handleChange} placeholder="Placa" icon={<Hash size={18} />} />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium">Serviços</label>
-                    <div className="flex gap-2">
-                        <select onChange={event => addService(event.target.value)} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                            <option value="">Adicionar serviço...</option>
-                            {services.map(service => (
-                                <option key={service.id} value={service.id}>{service.name} - R$ {service.price}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="mt-2 space-y-2">
-                        {formData.services?.map(service => (
-                            <div key={service.id} className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded-md">
-                                <span>{service.name}</span>
-                                <div className="flex items-center gap-4">
-                                    <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.price)}</span>
-                                    <button type="button" onClick={() => removeService(service.id)} className="text-red-500 hover:text-red-700"><XCircle size={18} /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium">Observações</label>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700" rows={3} placeholder="Observações sobre peças, diagnóstico ou aprovações"></textarea>
-                </div>
-
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-xl font-bold text-right">Total mão de obra: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAppointmentPrice)}</p>
-                </div>
-
-                <div className="flex justify-between items-center pt-4">
-                    <Button type="submit">Salvar agendamento</Button>
-                    {appointment && appointment.status !== 'finalizado' && (
-                        <Button type="button" variant="success" onClick={() => setIsCheckoutOpen(true)}>Finalizar e faturar</Button>
-                    )}
-                </div>
-            </form>
-            {appointment && (
-                <CheckoutModal
-                    isOpen={isCheckoutOpen}
-                    onClose={() => setIsCheckoutOpen(false)}
-                    appointment={formData}
-                    onProcess={handleProcessCheckout}
-                />
-            )}
-        </Modal>
-    );
+        <div className="flex justify-end gap-2 pt-4 border-t dark:border-gray-700">
+          {appointment && (
+            <Button type="button" variant="danger" onClick={() => onDelete(appointment.id)}>
+              <Trash2 size={18} />
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button type="submit">Salvar</Button>
+        </div>
+      </form>
+    </Modal>
+  );
 };
 
-const Agenda = ({ userId, appointments, professionals, clients, services, setNotification }) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedAppointment, setSelectedAppointment] = useState(null);
-    const [selectedTime, setSelectedTime] = useState(null);
+// --- Componente Principal Agenda ---
 
-    const handleSaveAppointment = async appointmentData => {
-        if (!userId) {
-            setNotification({ show: true, message: 'Sessao expirada. Faça login novamente.', type: 'error' });
-            return false;
-        }
-        try {
-            if (selectedAppointment) {
-                await updateDoc(userDocRef(userId, 'appointments', selectedAppointment.id), appointmentData);
-            } else {
-                await addDoc(userCollectionRef(userId, 'appointments'), appointmentData);
-            }
-            setIsModalOpen(false);
-            setNotification({ show: true, message: 'Agendamento salvo com sucesso!', type: 'success' });
-            return true;
-        } catch (error) {
-            console.error('Erro ao salvar agendamento:', error);
-            setNotification({ show: true, message: 'Erro ao salvar agendamento.', type: 'error' });
-            return false;
-        }
-    };
+const Agenda = ({ userId, setNotification }) => {
+  const [appointments, setAppointments] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
 
-    const handleOpenModal = (appointment = null, time = null) => {
-        setSelectedAppointment(appointment);
-        if (time) {
-            const [hour, minute] = time.split(':');
-            const newDate = new Date(currentDate);
-            newDate.setHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
-            setSelectedTime(newDate.toISOString());
-        } else {
-            setSelectedTime(null);
-        }
-        setIsModalOpen(true);
-    };
+  useEffect(() => {
+    if (!userId) return;
 
-    const timeSlots = Array.from({ length: 12 * 2 }, (_, index) => {
-        const hour = 8 + Math.floor(index / 2);
-        const minute = (index % 2) * 30;
-        return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    // Buscar Agendamentos
+    const qApp = query(userCollectionRef(userId, 'appointments'), orderBy('date'), orderBy('time'));
+    const unsubApp = onSnapshot(qApp, (snapshot) => {
+      setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const filteredAppointments = useMemo(() => {
-        return appointments.filter(appointment => {
-            const appointmentDate = new Date(appointment.date);
-            return appointmentDate.toDateString() === currentDate.toDateString();
-        });
-    }, [appointments, currentDate]);
+    // Buscar Clientes (para o select)
+    const qCli = query(userCollectionRef(userId, 'clients'), orderBy('name'));
+    const unsubCli = onSnapshot(qCli, (snapshot) => {
+      setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
-    const professionalsMap = useMemo(() => {
-        const map = new Map();
-        professionals.forEach(professional => {
-            if (professional?.id) {
-                map.set(professional.id, professional);
-            }
-        });
-        return map;
-    }, [professionals]);
+    return () => { unsubApp(); unsubCli(); };
+  }, [userId]);
 
-    const sortedMobileAppointments = useMemo(
-        () => [...filteredAppointments].sort((a, b) => new Date(a.date) - new Date(b.date)),
-        [filteredAppointments]
-    );
+  const handleSave = async (data) => {
+    try {
+      if (data.id) {
+        await updateDoc(userDocRef(userId, 'appointments', data.id), data);
+      } else {
+        await addDoc(userCollectionRef(userId, 'appointments'), { ...data, createdAt: serverTimestamp() });
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Erro ao salvar agendamento:", error);
+    }
+  };
 
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Agenda da oficina</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Navegue pelos dias e toque em um horario para gerenciar os agendamentos.</p>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 md:justify-end md:w-auto w-full">
-                    <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end w-full sm:w-auto">
-                        <Button
-                            variant="secondary"
-                            className="flex-1 min-w-[130px] sm:flex-none"
-                            onClick={() => setCurrentDate(prev => new Date(prev.getTime() - 86400000))}
-                        >
-                            Dia anterior
-                        </Button>
-                        <div className="px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center font-semibold text-sm text-gray-700 dark:text-gray-200 flex-1 min-w-[150px] sm:flex-none">
-                            {currentDate.toLocaleDateString('pt-BR')}
-                        </div>
-                        <Button
-                            variant="secondary"
-                            className="flex-1 min-w-[130px] sm:flex-none"
-                            onClick={() => setCurrentDate(prev => new Date(prev.getTime() + 86400000))}
-                        >
-                            Proximo dia
-                        </Button>
-                    </div>
-                    <Button
-                        onClick={() => handleOpenModal()}
-                        icon={<Plus size={18} />}
-                        className="w-full sm:w-auto"
-                    >
-                        Novo agendamento
-                    </Button>
-                </div>
-            </div>
-            <div className="hidden md:block overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-                <div className="grid" style={{ gridTemplateColumns: `80px repeat(${professionals.length}, minmax(180px, 1fr))` }}>
-                    <div className="sticky left-0 bg-gray-100 dark:bg-gray-900 z-10">
-                        <div className="h-16 flex items-center justify-center border-b border-r border-gray-200 dark:border-gray-700"><Clock size={24} /></div>
-                        {timeSlots.map(time => (
-                            <div key={time} className="h-20 flex items-center justify-center border-b border-r border-gray-200 dark:border-gray-700 font-mono text-sm">{time}</div>
-                        ))}
-                    </div>
-                    {professionals.map(professional => (
-                        <div key={professional.id} className="border-r border-gray-200 dark:border-gray-700">
-                            <div className="h-16 flex flex-col items-center justify-center border-b border-gray-200 dark:border-gray-700 text-center px-2">
-                                <p className="font-bold">{professional.name}</p>
-                                <p className="text-xs text-gray-500">{professional.specialty}</p>
-                            </div>
-                            <div className="relative">
-                                {timeSlots.map(time => (
-                                    <div
-                                        key={time}
-                                        className="h-20 border-b border-gray-200 dark:border-gray-700 relative group"
-                                        onClick={() => handleOpenModal(null, time)}
-                                    >
-                                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center transition-opacity">
-                                            <Plus size={24} className="text-blue-500" />
-                                        </div>
-                                    </div>
-                                ))}
-                                {filteredAppointments.filter(appointment => appointment.professionalId === professional.id).map(appointment => {
-                                    const appointmentDate = new Date(appointment.date);
-                                    const top = ((appointmentDate.getHours() - 8) * 2 + appointmentDate.getMinutes() / 30) * 80;
-                                    const totalDuration = appointment.services?.reduce((sum, service) => sum + service.duration, 0) || 60;
-                                    const height = (totalDuration / 30) * 80;
-                                    const colorClasses = statusColors[appointment.status] || statusColors.agendado;
-                                    return (
-                                        <div
-                                            key={appointment.id}
-                                            style={{ top: `${top}px`, height: `${height}px` }}
-                                            className={`absolute left-1 right-1 p-2 rounded-lg border-l-4 shadow-md cursor-pointer ${colorClasses}`}
-                                            onClick={() => handleOpenModal(appointment)}
-                                        >
-                                            <p className="font-bold text-sm truncate">{appointment.clientName}</p>
-                                            <p className="text-xs truncate">{appointment.vehiclePlate || 'Sem placa'}</p>
-                                            <p className="text-xs truncate">{appointment.services?.map(service => service.name).join(', ')}</p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <div className="space-y-4 md:hidden">
-                {sortedMobileAppointments.length === 0 ? (
-                    <p className="text-sm text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                        Nenhum agendamento para este dia.
-                    </p>
-                ) : (
-                    sortedMobileAppointments.map(appointment => {
-                        const appointmentDate = new Date(appointment.date);
-                        const professional = professionalsMap.get(appointment.professionalId);
-                        const statusClass = statusColors[appointment.status] || statusColors.agendado;
-                        const servicesList = appointment.services?.map(service => service.name).join(', ') || 'Sem servicos vinculados';
-                        const vehicleInfo = [appointment.vehicleBrand, appointment.vehicleModel, appointment.vehiclePlate].filter(Boolean).join(' ') || 'Veiculo nao informado';
-                        return (
-                            <div key={appointment.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4 space-y-3">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{appointment.clientName}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{professional?.name || 'Profissional nao definido'}</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                                            {appointmentDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                        </p>
-                                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                            {appointmentDate.toLocaleDateString('pt-BR')}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${statusClass}`}>
-                                        {getStatusLabel(appointment.status)}
-                                    </span>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">{appointment.vehiclePlate || 'Sem placa'}</span>
-                                </div>
-                                <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                                    <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Veiculo</span>
-                                        <span>{vehicleInfo}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Servicos</span>
-                                        <span>{servicesList}</span>
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        onClick={() => handleOpenModal(appointment)}
-                                        variant="secondary"
-                                        className="flex-1 min-w-[140px]"
-                                        icon={<ClipboardList size={16} />}
-                                    >
-                                        Ver detalhes
-                                    </Button>
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-            <AppointmentModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                appointment={selectedAppointment}
-                onSave={handleSaveAppointment}
-                clients={clients}
-                professionals={professionals}
-                services={services}
-                selectedTime={selectedTime}
-                setNotification={setNotification}
-                userId={userId}
-            />
+  const handleDelete = async (id) => {
+    if (window.confirm("Tem certeza que deseja excluir este agendamento?")) {
+      try {
+        await deleteDoc(userDocRef(userId, 'appointments', id));
+        setIsModalOpen(false);
+      } catch (error) {
+        console.error("Erro ao excluir:", error);
+      }
+    }
+  };
+
+  const filteredAppointments = appointments.filter(a => a.date === filterDate);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+          <Calendar className="text-blue-600" /> Agenda
+        </h1>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+          <Button onClick={() => { setSelectedAppointment(null); setIsModalOpen(true); }} icon={<Plus size={18} />}>
+            Novo Agendamento
+          </Button>
         </div>
-    );
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        {filteredAppointments.length === 0 ? (
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            Nenhum agendamento para este dia.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {filteredAppointments.map(app => (
+              <div key={app.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors flex items-center justify-between group">
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center min-w-[60px] p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-700 dark:text-blue-300">
+                    <Clock size={18} className="mb-1" />
+                    <span className="font-bold text-sm">{app.time}</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-800 dark:text-white">{app.clientName}</h3>
+                    <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-1">
+                      {app.vehicleModel && (
+                        <span className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-xs">
+                          <Car size={12} /> {app.vehicleModel} {app.vehiclePlate && `(${app.vehiclePlate})`}
+                        </span>
+                      )}
+                    </div>
+                    {app.notes && <p className="text-xs text-gray-400 mt-1 italic">{app.notes}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium border ${app.status === 'Concluído' ? 'bg-green-100 text-green-800 border-green-200' :
+                    app.status === 'Cancelado' ? 'bg-red-100 text-red-800 border-red-200' :
+                      app.status === 'Confirmado' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                        'bg-yellow-100 text-yellow-800 border-yellow-200'
+                    }`}>
+                    {app.status}
+                  </span>
+                  <button
+                    onClick={() => { setSelectedAppointment(app); setIsModalOpen(true); }}
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                  >
+                    <Edit size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AppointmentModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        appointment={selectedAppointment}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        clients={clients}
+        userId={userId}
+      />
+    </div>
+  );
 };
 
 export default Agenda;
-

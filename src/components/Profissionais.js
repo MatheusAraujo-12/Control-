@@ -1,350 +1,555 @@
-import React, { useState, useEffect } from 'react';
-import { deleteDoc, doc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { db, userDocRef, getSecondaryAuth } from '../firebase';
+import React, { useEffect, useMemo, useState } from 'react';
+import { addDoc, updateDoc, deleteDoc, query, onSnapshot, orderBy, serverTimestamp } from 'firebase/firestore';
+import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { UserPlus, Edit, User, Mail, Wrench, Trash2 } from 'lucide-react';
-import EmployeePermissions, { enhancePermissionsShape } from './EmployeePermissions';
+import { User, Phone, Mail, Lock, Briefcase, Edit, Trash2, Plus, DollarSign, Calendar } from 'lucide-react';
 
-const emptyProfessional = {
-    name: '',
-    email: '',
-    specialty: '',
-    password: '',
-    initialPassword: '',
-    permissions: enhancePermissionsShape(),
+const resolveDateString = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value.split('T')[0];
+    if (value?.toDate) return value.toDate().toISOString().split('T')[0];
+    if (value?.seconds) return new Date(value.seconds * 1000).toISOString().split('T')[0];
+    return '';
 };
 
-const ProfessionalFormModal = ({ isOpen, onClose, professional, onSave }) => {
-    const [formData, setFormData] = useState(emptyProfessional);
-    const [isSaving, setIsSaving] = useState(false);
+const Profissionais = ({ userId, professionals = [], transactions = [], setNotification, initialTab = 'list' }) => {
+    // Dados de profissionais
+    const [fetchedProfessionals, setFetchedProfessionals] = useState([]);
+    const [mergedProfessionals, setMergedProfessionals] = useState([]);
 
-    useEffect(() => {
-        if (professional) {
-            setFormData({
-                ...emptyProfessional,
-                ...professional,
-                permissions: enhancePermissionsShape(professional.permissions),
-            });
-        } else {
-            setFormData(emptyProfessional);
-        }
-    }, [professional, isOpen]);
-
-    const handleChange = event => {
-        const { name, value, type, checked } = event.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value,
-        }));
-    };
-
-    const handlePermissionsChange = permissions => {
-        setFormData(prev => ({
-            ...prev,
-            permissions: enhancePermissionsShape(permissions),
-        }));
-    };
-
-    const handleSubmit = async event => {
-        event.preventDefault();
-        if (isSaving) {
-            return;
-        }
-        setIsSaving(true);
-        try {
-            const success = await onSave(formData);
-            if (success) {
-                onClose();
-            }
-        } catch (error) {
-            console.error("Erro ao submeter técnico:", error);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={professional ? 'Editar técnico' : 'Novo técnico'}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome completo" icon={<User size={18} />} required />
-                <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="E-mail" icon={<Mail size={18} />} required/>
-                <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Especialidade (ex: eletrica, mecanica pesada)" icon={<Wrench size={18} />} />
-                {!professional && (
-                    <Input name="password" type="password" value={formData.password} onChange={handleChange} placeholder="Senha provisória" required />
-                )}
-                <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Permissões</label>
-                    <EmployeePermissions value={formData.permissions} onChange={handlePermissionsChange} />
-                </div>
-                <div className="flex justify-end space-x-3 pt-4">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar técnico'}</Button>
-                </div>
-            </form>
-        </Modal>
-    );
-};
-
-const Profissionais = ({ userId, professionals, setNotification, subscriptionInfo = {} }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentProfessional, setCurrentProfessional] = useState(null);
+    const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+    const [professionalToDelete, setProfessionalToDelete] = useState(null);
 
-    const openModal = professional => {
-        setCurrentProfessional(professional);
-        setIsModalOpen(true);
-    };
+    // Abas e filtros
+    const [activeTab, setActiveTab] = useState(initialTab === 'payments' ? 'payments' : 'list'); // 'list' | 'payments'
+    const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
+    const [dateRange, setDateRange] = useState({
+        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+        end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
+    });
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [paymentData, setPaymentData] = useState({
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        paymentMethod: 'Pix',
+        notes: '',
+    });
 
-    const closeModal = () => {
-        setIsModalOpen(false);
-        setCurrentProfessional(null);
-    };
+    // Formulário de profissional
+    const [formData, setFormData] = useState({
+        name: '',
+        role: 'Mecanico',
+        phone: '',
+        email: '',
+        password: '',
+    });
 
-    const encodePassword = (value = '') => {
-        if (!value) {
-            return '';
+    // Busca lista de profissionais no Firestore (coleção nova)
+    useEffect(() => {
+        if (!userId) return;
+        const q = query(userCollectionRef(userId, 'professionals'), orderBy('name'));
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                setFetchedProfessionals(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+            },
+            (error) => console.error('Erro ao buscar professionals:', error),
+        );
+        return () => unsubscribe();
+    }, [userId]);
+
+    // Une lista recebida por props com a lista do Firestore
+    useEffect(() => {
+        const combined = [...professionals, ...fetchedProfessionals];
+        const unique = combined.filter((item, index, self) => index === self.findIndex((t) => t.id === item.id));
+        unique.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setMergedProfessionals(unique);
+    }, [professionals, fetchedProfessionals]);
+
+    useEffect(() => {
+        setActiveTab(initialTab === 'payments' ? 'payments' : 'list');
+    }, [initialTab]);
+
+    useEffect(() => {
+        if (currentProfessional) {
+            setFormData({
+                name: currentProfessional.name || '',
+                role: currentProfessional.role || 'Mecanico',
+                phone: currentProfessional.phone || '',
+                email: currentProfessional.email || '',
+                password: currentProfessional.password || '',
+            });
+        } else {
+            setFormData({
+                name: '',
+                role: 'Mecanico',
+                phone: '',
+                email: '',
+                password: '',
+            });
         }
+    }, [currentProfessional]);
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!userId) return;
+
         try {
-            if (typeof btoa === 'function') {
-                return btoa(value);
-            }
-        } catch (_) {
-            // ignore
-        }
-        if (typeof Buffer !== 'undefined') {
-            try {
-                return Buffer.from(value, 'utf-8').toString('base64');
-            } catch (__error) {
-                console.warn('Nao foi possivel codificar a senha inicial do tecnico.');
-            }
-        }
-        return value;
-    };
+            const dataToSave = { ...formData };
 
-    const decodePassword = (value = '') => {
-        if (!value) {
-            return '';
-        }
-        try {
-            if (typeof atob === 'function') {
-                return atob(value);
-            }
-        } catch (_) {
-            // ignore
-        }
-        if (typeof Buffer !== 'undefined') {
-            try {
-                return Buffer.from(value, 'base64').toString('utf-8');
-            } catch (__error) {
-                console.warn('Não foi possível decodificar a senha inicial do técnico.');
-            }
-        }
-        return '';
-    };
-
-    const persistProfessionalDocs = async (uid, baseData, profileOverrides = {}) => {
-        let trialEndsAtIso = '';
-        if (subscriptionInfo?.trialEndsAt) {
-            if (subscriptionInfo.trialEndsAt instanceof Date) {
-                trialEndsAtIso = subscriptionInfo.trialEndsAt.toISOString();
-            } else {
-                const parsed = new Date(subscriptionInfo.trialEndsAt);
-                if (!Number.isNaN(parsed.getTime())) {
-                    trialEndsAtIso = parsed.toISOString();
-                }
-            }
-        }
-        const parentSubscriptionSnapshot = {
-            parentSubscriptionStatus: subscriptionInfo?.status || 'active',
-            parentSubscriptionPlan: subscriptionInfo?.plan || 'starter',
-            parentTrialEndsAt: trialEndsAtIso,
-        };
-        const adminPayload = { ...baseData, ...profileOverrides, ...parentSubscriptionSnapshot };
-        const { initialPassword, ...sanitizedPayload } = adminPayload;
-        const operations = [
-            () => setDoc(userDocRef(userId, 'employees', uid), adminPayload, { merge: true }),
-            () => setDoc(doc(db, 'users', uid), sanitizedPayload, { merge: true }),
-        ];
-        for (const operation of operations) {
-            try {
-                await operation();
-            } catch (error) {
-                if (error?.code === 'permission-denied' || error?.code === 'not-found') {
-                    continue;
-                }
-                throw error;
-            }
-        }
-    };
-
-    const deleteAuthAccount = async professional => {
-        if (!professional?.email || !professional?.initialPassword) {
-            return;
-        }
-        const decodedPassword = decodePassword(professional.initialPassword);
-        if (!decodedPassword) {
-            return;
-        }
-        const secondaryAuth = getSecondaryAuth();
-        try {
-            const { user } = await signInWithEmailAndPassword(secondaryAuth, professional.email, decodedPassword);
-            await user.delete();
-        } catch (error) {
-            if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password') {
-                console.warn('Não foi possível remover usuário da autenticação:', error);
-            } else {
-                throw error;
-            }
-        } finally {
-            await signOut(secondaryAuth).catch(() => {});
-        }
-    };
-
-    const handleSave = async data => {
-        if (!userId) {
-            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
-            return false;
-        }
-        try {
             if (currentProfessional) {
-                const { password, ...updates } = data;
-                const targetUid = currentProfessional.uid || currentProfessional.id;
-                const initialPassword = currentProfessional.initialPassword || data.initialPassword || '';
-                const basePayload = {
-                    ...updates,
-                    adminId: currentProfessional.adminId || userId,
-                    uid: targetUid,
-                    initialPassword,
-                    permissions: enhancePermissionsShape(updates.permissions),
-                };
-                const profilePayload = { role: 'employee' };
-                if (typeof currentProfessional.mustChangePassword === 'boolean') {
-                    basePayload.mustChangePassword = currentProfessional.mustChangePassword;
-                    profilePayload.mustChangePassword = currentProfessional.mustChangePassword;
-                }
-                await persistProfessionalDocs(targetUid, basePayload, profilePayload);
-                setNotification({ type: 'success', message: 'Técnico atualizado com sucesso!' });
+                await updateDoc(userDocRef(userId, 'professionals', currentProfessional.id), dataToSave).catch(async (err) => {
+                    console.warn('Tentativa de atualizar falhou (provavelmente colecao antiga):', err);
+                    setNotification?.({
+                        type: 'warning',
+                        message: 'Atencao: editando registro legado. As alteracoes podem nao persistir se a colecao for diferente.',
+                    });
+                });
+
+                setNotification?.({ type: 'success', message: 'Profissional atualizado!' });
             } else {
-                const { password, ...rest } = data;
-                const secondaryAuth = getSecondaryAuth();
-                const { user } = await createUserWithEmailAndPassword(secondaryAuth, rest.email, password);
-                await signOut(secondaryAuth).catch(() => {});
-                const professionalData = {
-                    ...rest,
-                    adminId: userId,
-                    uid: user.uid,
-                    role: 'employee',
-                    mustChangePassword: true,
-                    initialPassword: encodePassword(password),
-                };
-                await persistProfessionalDocs(user.uid, professionalData);
-                setNotification({ type: 'success', message: 'Técnico cadastrado com sucesso!' });
+                await addDoc(userCollectionRef(userId, 'professionals'), dataToSave);
+                setNotification?.({ type: 'success', message: 'Profissional cadastrado!' });
             }
-            return true;
+            setIsModalOpen(false);
+            setCurrentProfessional(null);
         } catch (error) {
-            console.error('Erro ao salvar tecnico:', error);
-            if (error?.code === 'auth/email-already-in-use') {
-                setNotification({ type: 'error', message: 'Já existe um usuário com este e-mail.' });
-            } else {
-                const extra = error?.code ? ` (${error.code})` : '';
-                setNotification({ type: 'error', message: `Não foi possível salvar o técnico${extra}.` });
-            }
-            return false;
+            console.error('Erro ao salvar profissional:', error);
+            setNotification?.({ type: 'error', message: 'Erro ao salvar profissional.' });
         }
     };
 
-    const handleDelete = async professionalId => {
-        if (!userId) {
-            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
-            return;
-        }
-        if (!window.confirm('Tem certeza que deseja excluir este técnico?')) {
-            return;
-        }
-        const safeDelete = async reference => {
-            try {
-                await deleteDoc(reference);
-            } catch (error) {
-                if (error?.code === 'permission-denied' || error?.code === 'not-found') {
-                    return;
-                } else {
-                    throw error;
-                }
-            }
-        };
+    const handleDeleteClick = (id) => {
+        setProfessionalToDelete(id);
+        setIsConfirmDeleteOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!professionalToDelete || !userId) return;
         try {
-            const professional = professionals.find(prof => prof.id === professionalId);
-            await deleteAuthAccount(professional);
-            await safeDelete(userDocRef(userId, 'employees', professionalId));
-            await safeDelete(doc(db, 'users', professionalId));
-            setNotification({ type: 'success', message: 'Técnico excluído com sucesso!' });
+            await deleteDoc(userDocRef(userId, 'professionals', professionalToDelete)).catch((err) => {
+                console.warn('Erro ao deletar (pode ser legado):', err);
+                setNotification?.({ type: 'error', message: 'Nao foi possivel remover este item (pode ser um registro antigo).' });
+            });
+            setNotification?.({ type: 'success', message: 'Profissional removido.' });
+            setIsConfirmDeleteOpen(false);
+            setProfessionalToDelete(null);
         } catch (error) {
-            console.error('Erro ao excluir tecnico:', error);
-            const extra = error && error.code ? ` (${error.code})` : '';
-            setNotification({ type: 'error', message: `Não foi possível excluir o técnico${extra}.` });
+            console.error('Erro ao remover profissional:', error);
+            setNotification?.({ type: 'error', message: 'Erro ao remover.' });
+        }
+    };
+
+    const rhPayments = useMemo(
+        () =>
+            transactions
+                .filter(
+                    (t) =>
+                        t.type === 'expense' &&
+                        (t.module === 'rh' || t.category === 'Pagamentos RH' || t.professionalId),
+                )
+                .map((t) => ({
+                    ...t,
+                    date: resolveDateString(t.date),
+                    amount: Number(t.amount ?? t.totalAmount ?? 0),
+                })),
+        [transactions],
+    );
+
+    const filteredPayments = useMemo(() => {
+        return rhPayments
+            .filter((payment) => {
+                const matchesProfessional =
+                    !selectedProfessionalId || selectedProfessionalId === 'all'
+                        ? true
+                        : payment.professionalId === selectedProfessionalId;
+                const paymentDate = resolveDateString(payment.date);
+                const matchesDate =
+                    (!dateRange.start || paymentDate >= dateRange.start) &&
+                    (!dateRange.end || paymentDate <= dateRange.end);
+                return matchesProfessional && matchesDate;
+            })
+            .sort((a, b) => new Date(b.date || '1970-01-01') - new Date(a.date || '1970-01-01'));
+    }, [rhPayments, selectedProfessionalId, dateRange]);
+
+    const totalPaidInPeriod = useMemo(
+        () => filteredPayments.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
+        [filteredPayments],
+    );
+
+    const handleRegisterPayment = async () => {
+        if (!userId) return;
+        if (!selectedProfessionalId) {
+            setNotification?.({ type: 'error', message: 'Selecione um profissional para registrar o pagamento.' });
+            return;
+        }
+
+        const amountValue = Number(paymentData.amount);
+        if (!amountValue || amountValue <= 0) {
+            setNotification?.({ type: 'error', message: 'Informe um valor valido para o pagamento.' });
+            return;
+        }
+
+        try {
+            const professional = mergedProfessionals.find((p) => p.id === selectedProfessionalId);
+
+            await addDoc(userCollectionRef(userId, 'transactions'), {
+                description: `Pagamento RH - ${professional?.name || 'Profissional'}`,
+                amount: amountValue,
+                totalAmount: amountValue,
+                type: 'expense',
+                category: 'Pagamentos RH',
+                date: paymentData.date,
+                status: 'paid',
+                paymentMethod: paymentData.paymentMethod || 'Pix',
+                notes: paymentData.notes,
+                professionalId: selectedProfessionalId,
+                professionalName: professional?.name || '',
+                module: 'rh',
+                createdAt: serverTimestamp(),
+            });
+
+            setNotification?.({ type: 'success', message: 'Pagamento registrado e enviado ao financeiro.' });
+            setIsPaymentModalOpen(false);
+            setPaymentData({
+                amount: '',
+                date: new Date().toISOString().split('T')[0],
+                paymentMethod: 'Pix',
+                notes: '',
+            });
+        } catch (error) {
+            console.error('Erro ao registrar pagamento:', error);
+            setNotification?.({ type: 'error', message: 'Erro ao registrar pagamento.' });
         }
     };
 
     return (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Equipe técnica</h1>
-                <Button onClick={() => openModal(null)} icon={<UserPlus size={18} />}>Novo técnico</Button>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hidden md:block">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-left">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="p-4 font-semibold">Nome</th>
-                                <th className="p-4 font-semibold">E-mail</th>
-                                <th className="p-4 font-semibold">Especialidade</th>
-                                <th className="p-4 font-semibold">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {professionals.map(prof => (
-                                <tr key={prof.id}>
-                                    <td className="p-4">{prof.name}</td>
-                                    <td className="p-4">{prof.email || "Sem e-mail"}</td>
-                                    <td className="p-4">{prof.specialty || "Não informado"}</td>
-                                    <td className="p-4">
-                                        <Button onClick={() => openModal(prof)} variant="secondary"><Edit size={16} /></Button>
-                                        <Button onClick={() => handleDelete(prof.id)} variant="danger" className="ml-2"><Trash2 size={16} /></Button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Gestao de Profissionais</h1>
+                <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+                    <button
+                        onClick={() => setActiveTab('list')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                            activeTab === 'list'
+                                ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-white'
+                                : 'text-gray-500 dark:text-gray-400'
+                        }`}
+                    >
+                        Lista
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('payments')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                            activeTab === 'payments'
+                                ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-white'
+                                : 'text-gray-500 dark:text-gray-400'
+                        }`}
+                    >
+                        Pagamentos
+                    </button>
                 </div>
             </div>
-            <div className="space-y-4 md:hidden">
-                {professionals.map(prof => (
-                    <div key={prof.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{prof.name}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{prof.email || 'Sem e-mail'}</p>
+
+            {activeTab === 'list' ? (
+                <>
+                    <div className="flex justify-end">
+                        <Button onClick={() => { setCurrentProfessional(null); setIsModalOpen(true); }} icon={<Plus size={18} />}>
+                            Novo Profissional
+                        </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {mergedProfessionals.length === 0 && (
+                            <div className="col-span-full text-center text-gray-500 py-8">Nenhum profissional cadastrado.</div>
+                        )}
+                        {mergedProfessionals.map((pro) => (
+                            <div
+                                key={pro.id}
+                                className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-l-4 border-blue-500 hover:shadow-lg transition-shadow"
+                            >
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-800 dark:text-white">{pro.name}</h3>
+                                        <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                            {pro.role}
+                                        </span>
+                                    </div>
+                                    <div className="flex space-x-2">
+                                        <button
+                                            onClick={() => { setCurrentProfessional(pro); setIsModalOpen(true); }}
+                                            className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50"
+                                        >
+                                            <Edit size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteClick(pro.id)}
+                                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                                    <div className="flex items-center gap-2">
+                                        <Phone size={16} className="text-gray-400" /> {pro.phone || 'Sem telefone'}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Mail size={16} className="text-gray-400" /> {pro.email || 'Sem e-mail'}
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <Button onClick={() => openModal(prof)} variant="secondary" className="px-3 py-1">
-                                    <Edit size={16} />
-                                </Button>
-                                <Button onClick={() => handleDelete(prof.id)} variant="danger" className="px-3 py-1 ml-2">
-                                    <Trash2 size={16} />
-                                </Button>
-                            </div>
+                        ))}
+                    </div>
+                </>
+            ) : (
+                <div className="space-y-6">
+                    {/* Filtros de Pagamentos */}
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-wrap gap-4 items-end">
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Profissional</label>
+                            <select
+                                className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white"
+                                value={selectedProfessionalId}
+                                onChange={(e) => setSelectedProfessionalId(e.target.value)}
+                            >
+                                <option value="">Todos</option>
+                                {mergedProfessionals.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-300">
-                            <span className="block font-medium text-gray-500 dark:text-gray-400">Especialidade</span>
-                            <span>{prof.specialty || 'Nao informado'}</span>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">De</label>
+                            <Input
+                                type="date"
+                                value={dateRange.start}
+                                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ate</label>
+                            <Input
+                                type="date"
+                                value={dateRange.end}
+                                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                            />
                         </div>
                     </div>
-                ))}
-            </div>
-            <ProfessionalFormModal isOpen={isModalOpen} onClose={closeModal} professional={currentProfessional} onSave={handleSave} />
+
+                    {/* Resumo e ação */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                            <h4 className="text-sm text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider">
+                                Total pago no periodo
+                            </h4>
+                            <p className="text-2xl font-bold text-blue-800 dark:text-blue-200 mt-1">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaidInPeriod)}
+                            </p>
+                        </div>
+                        <div className="md:col-span-2 flex items-center justify-end">
+                            <Button
+                                onClick={() => {
+                                    setPaymentData((prev) => ({ ...prev, amount: '' }));
+                                    setIsPaymentModalOpen(true);
+                                }}
+                                disabled={!selectedProfessionalId}
+                                icon={<DollarSign size={18} />}
+                            >
+                                Registrar Pagamento
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Tabela de Pagamentos */}
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-200 uppercase text-xs">
+                                <tr>
+                                    <th className="p-4">Data</th>
+                                    <th className="p-4">Profissional</th>
+                                    <th className="p-4">Forma</th>
+                                    <th className="p-4">Valor</th>
+                                    <th className="p-4">Observacoes</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {filteredPayments.length > 0 ? (
+                                    filteredPayments.map((item) => (
+                                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                            <td className="p-4 text-gray-500">
+                                                {item.date ? new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR') : 'N/A'}
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="font-medium text-gray-800 dark:text-white">{item.professionalName || '-'}</div>
+                                                <div className="text-xs text-gray-500">{item.category || 'Pagamentos RH'}</div>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                                    {item.paymentMethod || 'N/A'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 font-bold text-red-600">
+                                                -{' '}
+                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                                                    Number(item.amount || 0),
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-gray-600 dark:text-gray-300 max-w-xs">
+                                                {item.notes || '—'}
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="5" className="p-8 text-center text-gray-500">
+                                            Nenhum pagamento encontrado para este filtro.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de cadastro/edicao de profissional */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={currentProfessional ? 'Editar Profissional' : 'Novo Profissional'}
+            >
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <Input
+                        name="name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        placeholder="Nome Completo"
+                        icon={<User size={18} />}
+                        required
+                    />
+
+                    <div className="relative">
+                        <Briefcase className="absolute left-3 top-3 text-gray-400" size={18} />
+                        <select
+                            name="role"
+                            value={formData.role}
+                            onChange={handleChange}
+                            className="w-full pl-10 p-2 border rounded bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        >
+                            <option value="Mecanico">Mecanico</option>
+                            <option value="Atendente">Atendente</option>
+                            <option value="Gerente">Gerente</option>
+                            <option value="Auxiliar">Auxiliar</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" icon={<Phone size={18} />} />
+                        <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="E-mail de Login" icon={<Mail size={18} />} />
+                    </div>
+
+                    <Input
+                        name="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        placeholder="Senha de Acesso"
+                        icon={<Lock size={18} />}
+                    />
+
+                    <div className="flex justify-end pt-4">
+                        <Button type="submit">Salvar</Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Modal de Pagamento */}
+            <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Registrar Pagamento (RH)">
+                <div className="space-y-4">
+                    <div className="bg-yellow-50 p-3 rounded text-sm text-yellow-800 border border-yellow-200">
+                        Isso cria uma despesa em Transacoes Financeiras vinculada ao profissional selecionado.
+                    </div>
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                        Profissional:{' '}
+                        <strong>{mergedProfessionals.find((p) => p.id === selectedProfessionalId)?.name || 'Selecione no filtro acima'}</strong>
+                    </div>
+                    <Input
+                        label="Valor (R$)"
+                        type="number"
+                        value={paymentData.amount}
+                        onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                        icon={<DollarSign size={18} />}
+                    />
+                    <Input
+                        label="Data do Pagamento"
+                        type="date"
+                        value={paymentData.date}
+                        onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
+                        icon={<Calendar size={18} />}
+                    />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Forma de Pagamento</label>
+                        <select
+                            className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-white"
+                            value={paymentData.paymentMethod}
+                            onChange={(e) => setPaymentData({ ...paymentData, paymentMethod: e.target.value })}
+                        >
+                            <option value="Pix">Pix</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Dinheiro">Dinheiro</option>
+                            <option value="Cartao">Cartao</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Observacoes</label>
+                        <textarea
+                            className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-white"
+                            rows="3"
+                            value={paymentData.notes}
+                            onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
+                            placeholder="Ex: Salario do mes, adiantamento, etc."
+                        />
+                    </div>
+                    <div className="flex justify-end pt-4 gap-2">
+                        <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleRegisterPayment}>Confirmar Pagamento</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Modal de Confirmacao de Exclusao */}
+            {isConfirmDeleteOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-sm shadow-xl">
+                        <h3 className="text-lg font-bold mb-2 dark:text-white">Confirmar Exclusao</h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">
+                            Tem certeza que deseja remover este profissional? Esta acao nao pode ser desfeita.
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setIsConfirmDeleteOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button variant="danger" onClick={handleConfirmDelete}>
+                                Confirmar
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -1,829 +1,1054 @@
-import React, { useMemo, useState } from 'react';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { addDoc, updateDoc, deleteDoc, serverTimestamp, query, onSnapshot, orderBy, where, getDocs } from 'firebase/firestore';
 import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
-import { ConfirmModal } from './ui/ConfirmModal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Plus, Edit3, Trash2, Package, Wrench, FileText, DollarSign, User, Car as CarIcon, FileDown } from 'lucide-react';
+import { ConfirmModal } from './ui/ConfirmModal';
 
-const formatCurrency = value =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number.isFinite(value) ? value : Number(value) || 0);
+import { Edit, Plus, Trash2, Wrench, DollarSign, Printer, Car, User, Package, Search, X, Save, FileText, CreditCard, Calendar } from 'lucide-react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
-const formatDate = value => {
-    const parsed = value instanceof Date ? value : value?.seconds ? new Date(value.seconds * 1000) : value ? new Date(value) : null;
-    if (!parsed || Number.isNaN(parsed.getTime())) {
-        return 'N/A';
-    }
-    return parsed.toLocaleDateString('pt-BR');
+// --- Componentes de UI Auxiliares ---
+
+const SectionHeader = ({ icon: Icon, title, action }) => (
+    <div className="flex items-center justify-between mb-3 border-b pb-1 border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-semibold">
+            {Icon && <Icon size={18} className="text-blue-600 dark:text-blue-400" />}
+            <span>{title}</span>
+        </div>
+        {action}
+    </div>
+);
+
+const SearchableSelect = ({
+    options,
+    onSelect,
+    onCreate,
+    onEdit,
+    onDelete,
+    placeholder,
+    label,
+    icon: Icon
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const wrapperRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredOptions = options.filter(opt =>
+        opt.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const handleSelect = (option) => {
+        onSelect(option);
+        setSearch('');
+        setIsOpen(false);
+    };
+
+    const handleCreate = () => {
+        onCreate(search);
+        setSearch('');
+        setIsOpen(false);
+    };
+
+    return (
+        <div className="relative" ref={wrapperRef}>
+            {label && <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">{label}</label>}
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    {Icon && <Icon size={16} className="text-gray-400" />}
+                </div>
+                <input
+                    type="text"
+                    className="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white transition-shadow"
+                    placeholder={placeholder}
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setIsOpen(true); }}
+                    onFocus={() => setIsOpen(true)}
+                />
+            </div>
+
+            {isOpen && search && (
+                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto">
+                    {filteredOptions.length > 0 ? (
+                        filteredOptions.map((option) => (
+                            <div
+                                key={option.id}
+                                className="flex justify-between items-center px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer group text-sm"
+                            >
+                                <div className="flex-1" onClick={() => handleSelect(option)}>
+                                    <div className="font-medium text-gray-800 dark:text-gray-200">{option.name}</div>
+                                    {option.price !== undefined && <div className="text-xs text-gray-500 dark:text-gray-400">R$ {Number(option.price).toFixed(2)}</div>}
+                                </div>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {onEdit && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onEdit(option); }}
+                                            className="p-1 text-blue-500 hover:bg-blue-50 rounded"
+                                            title="Editar"
+                                        >
+                                            <Edit size={14} />
+                                        </button>
+                                    )}
+                                    {onDelete && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onDelete(option.id); }}
+                                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                            title="Excluir"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="px-3 py-2 text-center">
+                            <button
+                                onClick={handleCreate}
+                                className="text-sm text-blue-600 font-medium hover:underline flex items-center justify-center gap-1 w-full"
+                            >
+                                <Plus size={14} /> Criar "{search}"
+                            </button>
+                        </div>
+                    )}
+                    {filteredOptions.length > 0 && (
+                        <div className="border-t dark:border-gray-700 px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50">
+                            <button
+                                onClick={handleCreate}
+                                className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 w-full"
+                            >
+                                <Plus size={12} /> Criar novo "{search}"
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 };
 
-const STATUS_OPTIONS = [
-    { value: 'draft', label: 'Rascunho' },
-    { value: 'sent', label: 'Enviado' },
-    { value: 'approved', label: 'Aprovado' },
-    { value: 'rejected', label: 'Rejeitado' },
-];
+// --- Sub-Modais para Criação/Edição Rápida ---
 
-const STATUS_STYLES = {
-    draft: 'bg-gray-100 text-gray-700',
-    sent: 'bg-blue-100 text-blue-700',
-    approved: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
+const QuickClientModal = ({ isOpen, onClose, onSave }) => {
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave({ name, phone, vehicles: [] });
+        setName('');
+        setPhone('');
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Novo Cliente">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do Cliente" icon={<User size={18} />} required />
+                <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Telefone" icon={<User size={18} />} />
+                <div className="flex justify-end"><Button type="submit" size="sm">Salvar</Button></div>
+            </form>
+        </Modal>
+    );
 };
 
-const createEmptyPart = () => ({
-    id: `part-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    name: '',
-    quantity: '1',
-    unitPrice: '0',
-});
+const QuickServiceModal = ({ isOpen, onClose, onSave, initialData, initialName }) => {
+    const [name, setName] = useState('');
+    const [price, setPrice] = useState('');
 
-const createEmptyBudget = () => ({
+    useEffect(() => {
+        if (initialData) {
+            setName(initialData.name);
+            setPrice(initialData.price);
+        } else if (initialName) {
+            setName(initialName);
+            setPrice('');
+        } else {
+            setName('');
+            setPrice('');
+        }
+    }, [initialData, initialName, isOpen]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave({ ...initialData, name, price: Number(price) });
+        if (!initialData) {
+            setName('');
+            setPrice('');
+        }
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={initialData ? "Editar Serviço" : "Novo Serviço"}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do Serviço" icon={<Wrench size={18} />} required />
+                <Input value={price} type="number" onChange={e => setPrice(e.target.value)} placeholder="Preço Padrão" icon={<DollarSign size={18} />} />
+                <div className="flex justify-end"><Button type="submit" size="sm">Salvar</Button></div>
+            </form>
+        </Modal>
+    );
+};
+
+const QuickPartModal = ({ isOpen, onClose, onSave, initialData, initialName }) => {
+    const [name, setName] = useState('');
+    const [price, setPrice] = useState('');
+    const [cost, setCost] = useState('');
+
+    useEffect(() => {
+        if (initialData) {
+            setName(initialData.name);
+            setPrice(initialData.price);
+            setCost(initialData.cost || '');
+        } else if (initialName) {
+            setName(initialName);
+            setPrice('');
+            setCost('');
+        } else {
+            setName('');
+            setPrice('');
+            setCost('');
+        }
+    }, [initialData, initialName, isOpen]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave({ ...initialData, name, price: Number(price), cost: Number(cost), stock: initialData?.stock || 0 });
+        if (!initialData) {
+            setName('');
+            setPrice('');
+            setCost('');
+        }
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={initialData ? "Editar Peça" : "Nova Peça"}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nome da Peça" icon={<Package size={18} />} required />
+                <div className="grid grid-cols-2 gap-4">
+                    <Input value={price} type="number" onChange={e => setPrice(e.target.value)} placeholder="Preço Venda" icon={<DollarSign size={18} />} />
+                    <Input value={cost} type="number" onChange={e => setCost(e.target.value)} placeholder="Custo (Opcional)" icon={<DollarSign size={18} />} />
+                </div>
+                <div className="flex justify-end"><Button type="submit" size="sm">Salvar</Button></div>
+            </form>
+        </Modal>
+    );
+};
+
+// --- Componente Principal ---
+
+const emptyOrdemDeServico = {
     clientId: '',
     clientName: '',
-    vehicleBrand: '',
-    vehicleModel: '',
     vehiclePlate: '',
-    laborCost: '0',
-    discount: '0',
-    notes: '',
-    status: 'draft',
-    budgetNumber: '',
-    parts: [createEmptyPart()],
+    vehicleModel: '',
+    vehicleBrand: '',
+    vehicleColor: '',
+    professionalId: '',
+    professionalName: '',
     services: [],
-});
-
-const toDate = value => {
-    if (!value) return null;
-    if (value instanceof Date) return value;
-    if (typeof value === 'object' && 'seconds' in value) {
-        return new Date(value.seconds * 1000);
-    }
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    parts: [],
+    status: 'Pendente',
+    type: 'Orcamento',
+    notes: '',
+    laborDescription: '',
+    totalPrice: 0,
+    payments: [],
+    scheduleDate: '',
+    scheduleTime: '',
 };
 
-const roundCurrency = value => Math.round((Number(value) || 0) * 100) / 100;
+const OrdemDeServicoFormModal = ({
+    isOpen, onClose, os, onSave, onDelete,
+    clients, services, parts, professionals, userId, setNotification,
+    onQuickCreateClient, onQuickCreateService, onQuickCreatePart,
+    onEditService, onDeleteService, onEditPart, onDeletePart
+}) => {
+    const [formData, setFormData] = useState(emptyOrdemDeServico);
+    const [isSaving, setIsSaving] = useState(false);
 
-const getNextBudgetNumber = (existingBudgets = []) => {
-    const numbers = existingBudgets
-        .map(item => parseInt(item.budgetNumber, 10))
-        .filter(Number.isFinite);
-    const next = numbers.length ? Math.max(...numbers) + 1 : 1;
-    return String(next).padStart(6, '0');
-};
-const Orcamentos = ({ userId, budgets = [], clients = [], services = [], appSettings = {}, setNotification }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, id: null });
-    const [currentBudget, setCurrentBudget] = useState(null);
-    const [formData, setFormData] = useState(createEmptyBudget());
-    const [selectedServiceId, setSelectedServiceId] = useState('');
+    const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
 
-    const sortedBudgets = useMemo(() => {
-        return [...budgets].sort((a, b) => {
-            const dateA = toDate(a?.updatedAt || a?.createdAt);
-            const dateB = toDate(b?.updatedAt || b?.createdAt);
-            return (dateB ? dateB.getTime() : 0) - (dateA ? dateA.getTime() : 0);
-        });
-    }, [budgets]);
+    // Modais de criação rápida
+    const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+    const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+    const [isPartModalOpen, setIsPartModalOpen] = useState(false);
 
-    const totals = useMemo(() => {
-        const partsTotal = formData.parts.reduce((sum, part) => sum + (Number(part.quantity) || 0) * (Number(part.unitPrice) || 0), 0);
-        const servicesTotal = formData.services.reduce((sum, service) => sum + (Number(service.price) || 0), 0);
-        const laborCost = Number(formData.laborCost) || 0;
-        const subtotal = partsTotal + servicesTotal + laborCost;
-        const discount = Math.min(Number(formData.discount) || 0, subtotal);
-        const total = Math.max(subtotal - discount, 0);
+    // Estados para Edição/Criação
+    const [editingService, setEditingService] = useState(null);
+    const [editingPart, setEditingPart] = useState(null);
+    const [newServiceName, setNewServiceName] = useState('');
+    const [newPartName, setNewPartName] = useState('');
 
-        return {
-            partsTotal,
-            servicesTotal,
-            laborCost,
-            discount,
-            subtotal,
-            total,
-        };
-    }, [formData.parts, formData.services, formData.laborCost, formData.discount]);
+    useEffect(() => {
+        const initialData = os ? { ...emptyOrdemDeServico, ...os } : emptyOrdemDeServico;
+        setFormData(initialData);
+    }, [os, isOpen]);
 
-    const resetForm = () => {
-        setFormData(createEmptyBudget());
-        setSelectedServiceId('');
-    };
+    useEffect(() => {
+        const servicesTotal = formData.services.reduce((acc, service) => acc + (Number(service.price || 0) * (Number(service.quantity || 1))), 0);
+        const partsTotal = formData.parts.reduce((acc, part) => acc + (Number(part.quantity || 0) * Number(part.price || 0)), 0);
+        setFormData(prevData => ({ ...prevData, totalPrice: servicesTotal + partsTotal }));
+    }, [formData.services, formData.parts]);
 
-    const closeModal = () => {
-        setIsModalOpen(false);
-        setCurrentBudget(null);
-        resetForm();
-    };
-
-    const openNewBudgetModal = () => {
-        resetForm();
-        setCurrentBudget(null);
-        setIsModalOpen(true);
-    };
-
-    const openEditBudgetModal = budget => {
-        setCurrentBudget(budget);
-        setFormData({
-            clientId: budget.clientId || '',
-            clientName: budget.clientName || '',
-            vehicleBrand: budget.vehicleBrand || '',
-            vehicleModel: budget.vehicleModel || '',
-            vehiclePlate: budget.vehiclePlate || '',
-            laborCost: String(budget.laborCost ?? 0),
-            discount: String(budget.discount ?? 0),
-            notes: budget.notes || '',
-            status: budget.status || 'draft',
-            budgetNumber: budget.budgetNumber || '',
-            parts: (Array.isArray(budget.parts) && budget.parts.length ? budget.parts : [createEmptyPart()]).map(part => ({
-                id: part.id || `part-${Math.random().toString(16).slice(2, 8)}`,
-                name: part.name || '',
-                quantity: String(part.quantity ?? 1),
-                unitPrice: String(part.unitPrice ?? 0),
-            })),
-            services: Array.isArray(budget.services)
-                ? budget.services.map(service => ({
-                      id: service.id || `service-${Math.random().toString(16).slice(2, 8)}`,
-                      name: service.name || '',
-                      price: Number(service.price) || 0,
-                  }))
-                : [],
-        });
-        setSelectedServiceId('');
-        setIsModalOpen(true);
-    };
-
-    const handleClientChange = event => {
-        const { value } = event.target;
-        const selectedClient = clients.find(client => client.id === value);
-        setFormData(current => ({
-            ...current,
-            clientId: value,
-            clientName: selectedClient ? selectedClient.name : '',
-            vehicleBrand: selectedClient?.vehicleBrand || current.vehicleBrand,
-            vehicleModel: selectedClient?.vehicleModel || current.vehicleModel,
-            vehiclePlate: selectedClient?.vehiclePlate || current.vehiclePlate,
-        }));
-    };
-
-    const handleInputChange = event => {
+    const handleChange = event => {
         const { name, value } = event.target;
-        setFormData(current => ({ ...current, [name]: value }));
+        setFormData({ ...formData, [name]: value });
     };
 
-    const handlePartChange = (id, field, value) => {
-        setFormData(current => ({
-            ...current,
-            parts: current.parts.map(part => (part.id === id ? { ...part, [field]: value } : part)),
-        }));
-    };
-
-    const handleAddPart = () => {
-        setFormData(current => ({
-            ...current,
-            parts: [...current.parts, createEmptyPart()],
-        }));
-    };
-
-    const handleRemovePart = id => {
-        setFormData(current => ({
-            ...current,
-            parts: current.parts.filter(part => part.id !== id),
-        }));
-    };
-
-    const handleAddService = () => {
-        if (!selectedServiceId) {
-            return;
-        }
-        const service = services.find(item => item.id === selectedServiceId);
-        if (!service) {
-            return;
-        }
-        setFormData(current => {
-            if (current.services.some(existing => existing.id === service.id)) {
-                return current;
-            }
-            return {
-                ...current,
-                services: [...current.services, { id: service.id, name: service.name || '', price: Number(service.price) || 0 }],
-            };
+    const handleClientSelect = (client) => {
+        setFormData({
+            ...formData,
+            clientId: client.id,
+            clientName: client.name,
+            vehiclePlate: '',
+            vehicleModel: '',
+            vehicleBrand: '',
+            vehicleColor: '',
         });
-        setSelectedServiceId('');
     };
 
-    const handleRemoveService = serviceId => {
-        setFormData(current => ({
-            ...current,
-            services: current.services.filter(service => service.id !== serviceId),
-        }));
+    const handleCreateClientRequest = (name) => {
+        // Here we might want to pre-fill the modal
+        // For now, just open the modal. Ideally pass the name.
+        setIsClientModalOpen(true);
     };
-    const handleSubmit = async event => {
-        event.preventDefault();
 
-        if (!userId) {
-            setNotification?.({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
-            return;
-        }
-
-        if (!formData.clientName.trim()) {
-            setNotification?.({ type: 'error', message: 'Informe o nome do cliente.' });
-            return;
-        }
-
-        const partsPayload = formData.parts
-            .filter(part => part.name.trim())
-            .map(part => {
-                const quantity = Number(part.quantity) || 0;
-                const unitPrice = Number(part.unitPrice) || 0;
-                return {
-                    id: part.id,
-                    name: part.name.trim(),
-                    quantity,
-                    unitPrice,
-                    total: roundCurrency(quantity * unitPrice),
-                };
-            });
-
-        const servicesPayload = formData.services.map(service => ({
+    // --- Lógica de Serviços ---
+    const handleAddServiceToOS = (service) => {
+        const newServices = [...formData.services, {
             id: service.id,
             name: service.name,
-            price: roundCurrency(service.price),
-        }));
+            price: Number(service.price),
+            quantity: 1
+        }];
+        setFormData({ ...formData, services: newServices });
+    };
 
-        const partsTotal = roundCurrency(partsPayload.reduce((sum, item) => sum + item.total, 0));
-        const servicesTotal = roundCurrency(servicesPayload.reduce((sum, item) => sum + item.price, 0));
-        const laborCost = roundCurrency(Number(formData.laborCost));
-        const discount = roundCurrency(Number(formData.discount));
-        const subtotal = roundCurrency(partsTotal + servicesTotal + laborCost);
-        const total = roundCurrency(subtotal - discount);
+    const handleCreateServiceRequest = (name) => {
+        setNewServiceName(name);
+        setEditingService(null);
+        setIsServiceModalOpen(true);
+    };
 
-        const payload = {
-            clientId: formData.clientId,
-            clientName: formData.clientName.trim(),
-            vehicleBrand: formData.vehicleBrand.trim(),
-            vehicleModel: formData.vehicleModel.trim(),
-            vehiclePlate: formData.vehiclePlate.trim(),
-            parts: partsPayload,
-            services: servicesPayload,
-            laborCost,
-            partsTotal,
-            servicesTotal,
-            discount,
-            total,
-            notes: formData.notes.trim(),
-            status: formData.status,
-            updatedAt: serverTimestamp(),
-        };
+    const handleRemoveServiceFromOS = (index) => {
+        setFormData({ ...formData, services: formData.services.filter((_, i) => i !== index) });
+    };
 
+    const handleUpdateServiceInOS = (index, field, value) => {
+        const newServices = [...formData.services];
+        newServices[index][field] = value;
+        setFormData({ ...formData, services: newServices });
+    };
+
+    // --- Lógica de Peças ---
+    const handleAddPartToOS = (part) => {
+        const newParts = [...formData.parts, {
+            id: part.id,
+            name: part.name,
+            price: Number(part.price),
+            quantity: 1
+        }];
+        setFormData({ ...formData, parts: newParts });
+    };
+
+    const handleCreatePartRequest = (name) => {
+        setNewPartName(name);
+        setEditingPart(null);
+        setIsPartModalOpen(true);
+    };
+
+    const handleRemovePartFromOS = (index) => {
+        setFormData({ ...formData, parts: formData.parts.filter((_, i) => i !== index) });
+    };
+
+    const handleUpdatePartInOS = (index, field, value) => {
+        const newParts = [...formData.parts];
+        newParts[index][field] = value;
+        setFormData({ ...formData, parts: newParts });
+    };
+
+    // --- Pagamentos ---
+    const addPayment = () => {
+        setFormData({ ...formData, payments: [...(formData.payments || []), { id: Date.now(), date: new Date().toISOString().split('T')[0], amount: 0, method: 'Pix', notes: '' }] });
+    };
+    const removePayment = (index) => setFormData({ ...formData, payments: formData.payments.filter((_, i) => i !== index) });
+    const handlePaymentChange = (index, field, value) => {
+        const newPayments = [...formData.payments];
+        newPayments[index][field] = value;
+        setFormData({ ...formData, payments: newPayments });
+    };
+
+    const handleSubmit = async event => {
+        event.preventDefault();
+        if (isSaving) return;
+        setIsSaving(true);
         try {
-            if (currentBudget) {
-                await updateDoc(userDocRef(userId, 'budgets', currentBudget.id), {
-                    ...payload,
-                    budgetNumber: currentBudget.budgetNumber || '',
-                });
-                setNotification?.({ type: 'success', message: 'Orçamento atualizado com sucesso!' });
-            } else {
-                const budgetNumber = getNextBudgetNumber(budgets);
-                await addDoc(userCollectionRef(userId, 'budgets'), {
-                    ...payload,
-                    budgetNumber,
-                    createdAt: serverTimestamp(),
-                });
-                setNotification?.({ type: 'success', message: 'Orçamento criado com sucesso!' });
+            // Integração Pátio
+            if (!os && formData.type === 'OS' && userId) {
+                try {
+                    await addDoc(userCollectionRef(userId, 'patio'), {
+                        clientName: formData.clientName,
+                        vehiclePlate: formData.vehiclePlate,
+                        vehicleModel: formData.vehicleModel,
+                        vehicleBrand: formData.vehicleBrand,
+                        vehicleColor: formData.vehicleColor,
+                        entryDate: serverTimestamp(),
+                        status: 'Na Oficina',
+                        notes: `OS Criada automaticamente. ${formData.notes}`,
+                        osLinked: true
+                    });
+                } catch (e) { console.error("Erro pátio auto", e); }
             }
-            closeModal();
-        } catch (error) {
-            console.error('Erro ao salvar orcamento:', error);
-            setNotification?.({ type: 'error', message: 'Não foi possivel salvar o orçamento.' });
-        }
-    };
 
-    const confirmDeleteBudget = budget => {
-        setConfirmDelete({ isOpen: true, id: budget.id });
-    };
+            // Integração Agenda (Novo)
+            if (formData.scheduleDate && formData.scheduleTime && userId) {
+                try {
+                    await addDoc(userCollectionRef(userId, 'appointments'), {
+                        clientId: formData.clientId || '',
+                        clientName: formData.clientName,
+                        vehiclePlate: formData.vehiclePlate || '',
+                        vehicleModel: formData.vehicleModel || '',
+                        date: formData.scheduleDate,
+                        time: formData.scheduleTime,
+                        notes: `Agendado via OS. ${formData.notes}`,
+                        status: 'Pendente',
+                        createdAt: serverTimestamp()
+                    });
+                } catch (e) { console.error("Erro agenda auto", e); }
+            }
 
-    const handleDelete = async () => {
-        if (!confirmDelete.id) {
-            return;
-        }
-        if (!userId) {
-            setNotification?.({ type: 'error', message: 'Sessao expirada. Faça login novamente.' });
-            return;
-        }
-        try {
-            await deleteDoc(userDocRef(userId, 'budgets', confirmDelete.id));
-            setNotification?.({ type: 'success', message: 'Orçamento removido com sucesso.' });
+            // Atualizar Status baseado nos pagamentos
+            const totalPaid = formData.payments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+            let newStatus = formData.status;
+            if (formData.totalPrice > 0) {
+                if (totalPaid >= formData.totalPrice) newStatus = 'Pago';
+                else if (totalPaid > 0) newStatus = 'Parcialmente Pago';
+                else newStatus = 'Pendente';
+            }
+            const dataToSave = { ...formData, status: newStatus };
+
+            const success = await onSave(dataToSave);
+            if (success) onClose();
         } catch (error) {
-            console.error('Erro ao remover orçamento:', error);
-            setNotification?.({ type: 'error', message: 'Nao foi possivel remover o orcamento.' });
+            console.error("Erro ao salvar OS:", error);
         } finally {
-            setConfirmDelete({ isOpen: false, id: null });
+            setIsSaving(false);
         }
     };
-    const handleGeneratePdf = budget => {
-        const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-        const marginLeft = 40;
-        let cursorY = 60;
 
-        if (appSettings.logoUrl) {
-            try {
-                pdf.addImage(appSettings.logoUrl, 'PNG', marginLeft, cursorY, 80, 80);
-            } catch (error) {
-                console.warn('Não foi possivel adicionar a logomarca ao PDF:', error);
-            }
+    const generatePDF = () => {
+        const doc = new jsPDF();
+        doc.setFontSize(20);
+        doc.text(formData.type === 'Orcamento' ? 'ORÇAMENTO' : 'ORDEM DE SERVIÇO', 105, 20, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(`Cliente: ${formData.clientName || 'N/A'}`, 20, 40);
+        doc.text(`Veículo: ${formData.vehicleBrand || ''} ${formData.vehicleModel || ''} - ${formData.vehiclePlate || ''}`, 20, 50);
+        doc.text(`Cor: ${formData.vehicleColor || 'N/A'}`, 20, 60);
+        doc.text(`Data: ${new Date().toLocaleDateString()}`, 150, 40);
+
+        const servicesData = formData.services.map(s => [s.name, s.quantity, `R$ ${Number(s.price).toFixed(2)}`]);
+        doc.autoTable({ startY: 70, head: [['Serviço', 'Qtd', 'Preço Unit.']], body: servicesData, theme: 'grid' });
+
+        let finalY = doc.lastAutoTable.finalY + 10;
+        if (formData.parts.length > 0) {
+            doc.text('Peças:', 20, finalY);
+            const partsData = formData.parts.map(p => [p.name, p.quantity, `R$ ${Number(p.price).toFixed(2)}`]);
+            doc.autoTable({ startY: finalY + 5, head: [['Peça', 'Qtd', 'Preço Unit.']], body: partsData, theme: 'grid' });
+            finalY = doc.lastAutoTable.finalY + 10;
         }
 
-        const companyInfoStartX = appSettings.logoUrl ? marginLeft + 100 : marginLeft;
-        pdf.setFontSize(18);
-        pdf.text(appSettings.companyName || 'Control+ Oficina', companyInfoStartX, cursorY + 20);
-        pdf.setFontSize(11);
-        const companyLines = [
-            appSettings.companyDocument ? `Documento: ${appSettings.companyDocument}` : null,
-            appSettings.companyAddress || null,
-            appSettings.companyPhone ? `Telefone: ${appSettings.companyPhone}` : null,
-            appSettings.companyEmail || null,
-            appSettings.companyWebsite || null,
-        ].filter(Boolean);
-        companyLines.forEach((line, index) => {
-            pdf.text(line, companyInfoStartX, cursorY + 40 + index * 14);
-        });
-
-        cursorY += Math.max(100, companyLines.length * 14 + 60);
-
-        pdf.setFontSize(12);
-        pdf.text(`Orcamento Numero ${budget.budgetNumber || budget.id}`, marginLeft, cursorY);
-        pdf.text(`Data: ${formatDate(budget.updatedAt || budget.createdAt)}`, pdf.internal.pageSize.getWidth() - marginLeft, cursorY, {
-            align: 'right',
-        });
-        cursorY += 20;
-
-        const client = clients.find(item => item.id === budget.clientId);
-        const clientLines = [
-            `Cliente: ${budget.clientName}`,
-            client?.phone ? `Telefone: ${client.phone}` : null,
-            client?.email ? `E-mail: ${client.email}` : null,
-            [budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).length
-                ? `Veiculo: ${[budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).join(' ')}`
-                : null,
-        ].filter(Boolean);
-        pdf.setFontSize(11);
-        clientLines.forEach(line => {
-            pdf.text(line, marginLeft, cursorY);
-            cursorY += 16;
-        });
-        cursorY += 10;
-
-        if (budget.services?.length) {
-            autoTable(pdf, {
-                startY: cursorY,
-                head: [['Servico', 'Valor']],
-                body: budget.services.map(service => [service.name, formatCurrency(service.price)]),
-                theme: 'striped',
-                styles: { fontSize: 10 },
-                columnStyles: { 1: { halign: 'right' } },
-                headStyles: { fillColor: [37, 99, 235] },
-                margin: { left: marginLeft, right: marginLeft },
-            });
-            const servicesTableY = pdf.lastAutoTable?.finalY ?? cursorY;
-            cursorY = servicesTableY + 20;
+        if (formData.laborDescription) {
+            doc.text('Detalhes da Mão de Obra:', 20, finalY);
+            doc.setFontSize(10);
+            const splitText = doc.splitTextToSize(formData.laborDescription, 170);
+            doc.text(splitText, 20, finalY + 7);
+            finalY += (splitText.length * 5) + 10;
         }
 
-        if (budget.parts?.length) {
-            autoTable(pdf, {
-                startY: cursorY,
-                head: [['Peca', 'Qtd.', 'Valor unitario', 'Total']],
-                body: budget.parts.map(part => [
-                    part.name,
-                    String(part.quantity),
-                    formatCurrency(part.unitPrice),
-                    formatCurrency(part.total ?? Number(part.quantity || 0) * Number(part.unitPrice || 0)),
-                ]),
-                theme: 'striped',
-                styles: { fontSize: 10 },
-                columnStyles: {
-                    1: { halign: 'center' },
-                    2: { halign: 'right' },
-                    3: { halign: 'right' },
-                },
-                headStyles: { fillColor: [37, 99, 235] },
-                margin: { left: marginLeft, right: marginLeft },
-            });
-            const partsTableY = pdf.lastAutoTable?.finalY ?? cursorY;
-            cursorY = partsTableY + 20;
-        }
-
-        pdf.setFontSize(12);
-        pdf.text('Resumo financeiro', marginLeft, cursorY);
-        cursorY += 16;
-        pdf.setFontSize(11);
-        const summaryLines = [
-            ['Pecas', formatCurrency(budget.partsTotal ?? 0)],
-            ['Servicos', formatCurrency(budget.servicesTotal ?? 0)],
-            ['Mao de obra', formatCurrency(budget.laborCost ?? 0)],
-            ['Subtotal', formatCurrency((budget.partsTotal || 0) + (budget.servicesTotal || 0) + (budget.laborCost || 0))],
-            ['Desconto', `- ${formatCurrency(budget.discount ?? 0)}`],
-            ['Total', formatCurrency(budget.total ?? 0)],
-        ];
-        summaryLines.forEach(([label, value]) => {
-            pdf.text(label, marginLeft, cursorY);
-            pdf.text(value, pdf.internal.pageSize.getWidth() - marginLeft, cursorY, { align: 'right' });
-            cursorY += 16;
-        });
-
-        if (budget.notes) {
-            cursorY += 10;
-            pdf.setFontSize(12);
-            pdf.text('Observacoes', marginLeft, cursorY);
-            cursorY += 14;
-            pdf.setFontSize(11);
-            const notes = pdf.splitTextToSize(budget.notes, pdf.internal.pageSize.getWidth() - marginLeft * 2);
-            pdf.text(notes, marginLeft, cursorY);
-        }
-
-        pdf.save(`orcamento-${budget.budgetNumber || budget.id}.pdf`);
+        doc.setFontSize(14);
+        doc.text(`Total: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.totalPrice)}`, 140, finalY + 10);
+        doc.save(`${formData.type}_${formData.clientName}.pdf`);
     };
+
+    const selectedClient = clients.find(c => c.id === formData.clientId);
+    const totalPaid = (formData.payments || []).reduce((acc, p) => acc + Number(p.amount || 0), 0);
+    const remainingBalance = formData.totalPrice - totalPaid;
+
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Orçamentos</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Gerencie e compartilhe propostas detalhadas com seus clientes.</p>
+        <Modal isOpen={isOpen} onClose={onClose} title={os ? (formData.type === 'Orcamento' ? 'Editar Orçamento' : 'Editar OS') : 'Nova OS / Orçamento'}>
+            <form onSubmit={handleSubmit} className="space-y-6">
+
+                {/* Tipo de Documento */}
+                <div className="flex justify-center space-x-6 pb-4 border-b border-gray-100 dark:border-gray-700">
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <input type="radio" name="type" value="OS" checked={formData.type === 'OS'} onChange={handleChange} className="form-radio text-blue-600 w-4 h-4" />
+                        <span className="font-bold text-gray-700 dark:text-gray-200">Ordem de Serviço</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <input type="radio" name="type" value="Orcamento" checked={formData.type === 'Orcamento'} onChange={handleChange} className="form-radio text-green-600 w-4 h-4" />
+                        <span className="font-bold text-gray-700 dark:text-gray-200">Orçamento</span>
+                    </label>
                 </div>
-                <Button onClick={openNewBudgetModal} icon={<Plus size={18} />}>Novo orçamento</Button>
-            </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hidden md:block">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-left">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="p-4 font-semibold">Número</th>
-                                <th className="p-4 font-semibold">Cliente</th>
-                                <th className="p-4 font-semibold">Status</th>
-                                <th className="p-4 font-semibold">Total</th>
-                                <th className="p-4 font-semibold">Atualizado em</th>
-                                <th className="p-4 font-semibold text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {sortedBudgets.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">Nenhum orçamento cadastrado até o momento.</td>
-                                </tr>
-                            ) : (
-                                sortedBudgets.map(budget => {
-                                    const statusStyle = STATUS_STYLES[budget.status] || STATUS_STYLES.draft;
-                                    const statusLabel = STATUS_OPTIONS.find(option => option.value === budget.status)?.label || 'Rascunho';
-                                    return (
-                                        <tr key={budget.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                                            <td className="p-4 font-semibold text-gray-800 dark:text-gray-100">{budget.budgetNumber || 'N/A'}</td>
-                                            <td className="p-4 text-sm text-gray-700 dark:text-gray-200">{budget.clientName || 'Cliente nao informado'}</td>
-                                            <td className="p-4">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyle}`}>{statusLabel}</span>
-                                            </td>
-                                            <td className="p-4 font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(budget.total)}</td>
-                                            <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{formatDate(budget.updatedAt || budget.createdAt)}</td>
-                                            <td className="p-4">
-                                                <div className="flex flex-wrap items-center justify-end gap-2">
-                                                    <Button onClick={() => handleGeneratePdf(budget)} variant="secondary" className="px-3 py-1 text-sm" icon={<FileDown size={16} />}>Gerar PDF</Button>
-                                                    <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" className="px-3 py-1 text-sm" icon={<Edit3 size={16} />}>Editar</Button>
-                                                    <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" className="px-3 py-1 text-sm" icon={<Trash2 size={16} />}>Excluir</Button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
 
-            <div className="space-y-4 md:hidden">
-                {sortedBudgets.length === 0 ? (
-                    <p className="text-center text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md">
-                        Nenhum orçamento cadastrado até o momento.
-                    </p>
-                ) : (
-                    sortedBudgets.map(budget => {
-                        const statusStyle = STATUS_STYLES[budget.status] || STATUS_STYLES.draft;
-                        const statusLabel = STATUS_OPTIONS.find(option => option.value === budget.status)?.label || 'Rascunho';
-                        return (
-                            <div key={budget.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 space-y-3 border border-gray-200 dark:border-gray-700">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">Orçamento #{budget.budgetNumber || 'N/A'}</p>
-                                        <span className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusStyle}`}>{statusLabel}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Total</p>
-                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(budget.total)}</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                                    <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Cliente</span>
-                                        <span>{budget.clientName || 'Cliente nao informado'}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Atualizado em</span>
-                                        <span>{formatDate(budget.updatedAt || budget.createdAt)}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Veiculo</span>
-                                        <span>{[budget.vehicleBrand, budget.vehicleModel, budget.vehiclePlate].filter(Boolean).join(' ') || 'Nao informado'}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Servicos</span>
-                                        <span>{budget.services?.length || 0}</span>
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2 pt-2">
-                                    <Button onClick={() => openEditBudgetModal(budget)} variant="secondary" className="flex-1 min-w-[120px]" icon={<Edit3 size={16} />}>
-                                        Editar
-                                    </Button>
-                                    <Button onClick={() => confirmDeleteBudget(budget)} variant="danger" className="flex-1 min-w-[120px]" icon={<Trash2 size={16} />}>
-                                        Excluir
-                                    </Button>
-                                    <Button onClick={() => handleGeneratePdf(budget)} variant="secondary" className="flex-1 min-w-[120px]" icon={<FileDown size={16} />}>
-                                        PDF
-                                    </Button>
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
 
-            <Modal
-                isOpen={isModalOpen}
-                onClose={closeModal}
-                title={currentBudget ? `Editar orcamento ${currentBudget.budgetNumber || ''}` : 'Novo orcamento'}
-            >
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="space-y-4">
-                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 -mb-2">Informações Principais</h3>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Cliente vinculado</label>
-                                    <select
-                                        value={formData.clientId}
-                                        onChange={handleClientChange}
-                                        className="w-full border rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
-                                    >
-                                        <option value="">Selecione um cliente ou digite um nome</option>
-                                        {clients.map(client => (
-                                            <option key={client.id} value={client.id}>{client.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Nome do Cliente </label>
-                                    <Input
-                                        name="clientName"
-                                        value={formData.clientName}
-                                        onChange={handleInputChange}
-                                        placeholder="Nome do cliente"
-                                        icon={<User size={18} />}
-                                        required
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Marca do Veículo</label>
-                                    <Input
-                                        name="vehicleBrand"
-                                        value={formData.vehicleBrand}
-                                        onChange={handleInputChange}
-                                        placeholder="Ex: Fiat"
-                                        icon={<CarIcon size={18} />}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Modelo</label>
-                                    <Input
-                                        name="vehicleModel"
-                                        value={formData.vehicleModel}
-                                        onChange={handleInputChange}
-                                        placeholder="Ex: Uno"
-                                        icon={<CarIcon size={18} />}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Placa</label>
-                                    <Input
-                                        name="vehiclePlate"
-                                        value={formData.vehiclePlate}
-                                        onChange={handleInputChange}
-                                        placeholder="Ex: ABC-1234"
-                                        icon={<CarIcon size={18} />}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Status do Orçamento</label>
-                            <select
-                                name="status"
-                                value={formData.status}
-                                onChange={handleInputChange}
-                                className="w-full border rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
-                            >
-                                {STATUS_OPTIONS.map(option => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-1">
-                            <select
-                                value={selectedServiceId}
-                                onChange={event => setSelectedServiceId(event.target.value)}
-                                className="flex-1 border rounded-lg px-0 py-2 bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200"
-                            >
-                                <option value="">Adicionar serviço existente</option>
-                                {services.map(service => (
-                                    <option key={service.id} value={service.id}>
-                                        {service.name} - {formatCurrency(service.price)}
-                                    </option>
-                                ))}
-                            </select>
-                            <Button type="button" variant="secondary" icon={<Wrench size={10} />} onClick={handleAddService}>Incluir</Button>
-                        </div>
-                        {formData.services.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Nenhum serviço selecionado.</p>
-                        ) : (
-                            <ul className="space-y-2">
-                                {formData.services.map(service => (
-                                    <li key={service.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
-                                        <div>
-                                            <p className="font-medium text-gray-700 dark:text-gray-200">{service.name}</p>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">{formatCurrency(service.price)}</p>
-                                        </div>
-                                        <Button type="button" variant="danger" icon={<Trash2 size={16} />} onClick={() => handleRemoveService(service.id)}>Remover</Button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">Peças e materiais</h3>
-                            <Button type="button" variant="secondary" icon={<Plus size={16} />} onClick={handleAddPart}>Adicionar peça</Button>
-                        </div>
-
-                        {formData.parts.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma peça adicionada.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {formData.parts.map(part => {
-                                    const subtotal = (Number(part.quantity) || 0) * (Number(part.unitPrice) || 0);
-                                    return (
-                                        <div key={part.id} className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-3">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                <div className="sm:col-span-2">
-                                                    <Input
-                                                        value={part.name}
-                                                        onChange={event => handlePartChange(part.id, 'name', event.target.value)}
-                                                        placeholder="Descrição da peça"
-                                                        icon={<Package size={18} />}
-                                                    />
-                                                </div>
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="1"
-                                                    value={part.quantity}
-                                                    onChange={event => handlePartChange(part.id, 'quantity', event.target.value)}
-                                                    placeholder="Qtd"
-                                                    icon={<Package size={18} />}
-                                                />
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={part.unitPrice}
-                                                    onChange={event => handlePartChange(part.id, 'unitPrice', event.target.value)}
-                                                    placeholder="Valor unitário"
-                                                    icon={<DollarSign size={18} />}
-                                                />
-                                            </div>
-                                            <div className="flex items-center justify-between pt-3 mt-2 border-t border-gray-200 dark:border-gray-700">
-                                                <div>
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400">Subtotal da Peça</span>
-                                                    <p className="text-base font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(subtotal)}</p>
-                                                </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="danger"
-                                                    icon={<Trash2 size={16} />}
-                                                    onClick={() => handleRemovePart(part.id)}
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input
-                            name="laborCost"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={formData.laborCost}
-                            onChange={handleInputChange}
-                            placeholder="Custo de mão de obra"
-                            icon={<Wrench size={18} />}
-                        />
-                        <Input
-                            name="discount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={formData.discount}
-                            onChange={handleInputChange}
-                            placeholder="Desconto"
-                            icon={<DollarSign size={18} />}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Observações</label>
-                        <div className="relative">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                                <FileText size={18} />
-                            </span>
-                            <textarea
-                                name="notes"
-                                value={formData.notes}
-                                onChange={handleInputChange}
-                                rows={3}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Detalhes adicionais do orçamento"
+                {/* Agendamento (Opcional) */}
+                {!os && (
+                    <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800 mb-4">
+                        <SectionHeader icon={Calendar} title="Agendar Serviço (Opcional)" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                type="date"
+                                label="Data"
+                                value={formData.scheduleDate}
+                                onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })}
+                            />
+                            <Input
+                                type="time"
+                                label="Hora"
+                                value={formData.scheduleTime}
+                                onChange={e => setFormData({ ...formData, scheduleTime: e.target.value })}
                             />
                         </div>
+                        <p className="text-xs text-gray-500 mt-1">Se preenchido, criará um item na Agenda automaticamente.</p>
+                    </div>
+                )}
+
+                <div className="space-y-6">
+
+                    {/* Linha 1: Cliente */}
+                    <div>
+                        <div className="mb-1">
+                            <SectionHeader icon={User} title="Cliente" />
+                        </div>
+                        <div className="w-full">
+                            {formData.clientId ? (
+                                <div className="flex items-center justify-between p-2 border rounded-md bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                                    <span className="font-medium text-blue-800 dark:text-blue-200">{formData.clientName}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, clientId: '', clientName: '' })}
+                                        className="text-blue-600 hover:text-blue-800 p-1"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <SearchableSelect
+                                    options={clients}
+                                    onSelect={handleClientSelect}
+                                    onCreate={handleCreateClientRequest}
+                                    placeholder="Digite o nome do cliente..."
+                                    icon={Search}
+                                />
+                            )}
+                        </div>
                     </div>
 
-                    <div className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Resumo financeiro</h3>
-                        <dl className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                            <div className="flex justify-between">
-                                <dt>Pecas</dt>
-                                <dd>{formatCurrency(totals.partsTotal)}</dd>
-                            </div>
-                            <div className="flex justify-between">
-                                <dt>Serviços</dt>
-                                <dd>{formatCurrency(totals.servicesTotal)}</dd>
-                            </div>
-                            <div className="flex justify-between">
-                                <dt>Mão de obra</dt>
-                                <dd>{formatCurrency(totals.laborCost)}</dd>
-                            </div>
-                            <div className="flex justify-between">
-                                <dt>Subtotal</dt>
-                                <dd>{formatCurrency(totals.subtotal)}</dd>
-                            </div>
-                            <div className="flex justify-between text-red-600 dark:text-red-400">
-                                <dt>Desconto</dt>
-                                <dd>- {formatCurrency(totals.discount)}</dd>
-                            </div>
-                            <div className="flex justify-between text-lg font-semibold text-gray-800 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700 pt-3">
-                                <dt>Total do orçamento</dt>
-                                <dd>{formatCurrency(totals.total)}</dd>
-                            </div>
-                        </dl>
+                    {/* Linha 2: Veículo */}
+                    <div>
+                        <div className="mb-1 flex justify-between items-center">
+                            <SectionHeader icon={Car} title="Veículo" />
+                            {selectedClient && (selectedClient.vehicles || []).length > 0 && (
+                                <select
+                                    className="text-xs p-1 border rounded bg-white dark:bg-gray-700 text-gray-500"
+                                    onChange={(e) => {
+                                        const v = selectedClient.vehicles.find(v => v.plate === e.target.value);
+                                        if (v) setFormData(prev => ({ ...prev, vehicleBrand: v.brand, vehicleModel: v.model, vehiclePlate: v.plate, vehicleColor: v.color || '' }));
+                                    }}
+                                >
+                                    <option value="">Preencher...</option>
+                                    {selectedClient.vehicles.map((v, i) => <option key={i} value={v.plate}>{v.model} - {v.plate}</option>)}
+                                </select>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca" className="text-sm" />
+                            <Input name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} placeholder="Modelo" className="text-sm" />
+                            <Input name="vehiclePlate" value={formData.vehiclePlate} onChange={handleChange} placeholder="Placa" className="text-sm" />
+                            <Input name="vehicleColor" value={formData.vehicleColor} onChange={handleChange} placeholder="Cor" className="text-sm" />
+                        </div>
                     </div>
 
-                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                        <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
-                        <Button type="submit">{currentBudget ? 'Salvar alterações' : 'Criar orçamento'}</Button>
+                    {/* Linha 3: Técnico */}
+                    <div>
+                        <div className="mb-1">
+                            <SectionHeader icon={User} title="Técnico Responsável (Opcional)" />
+                        </div>
+                        <select name="professionalId" value={formData.professionalId} onChange={handleChange} className="w-full p-2 text-sm border rounded-md bg-white dark:bg-gray-700 focus:ring-1 focus:ring-blue-500">
+                            <option value="">Selecione um profissional</option>
+                            {professionals.map(pro => <option key={pro.id} value={pro.id}>{pro.name}</option>)}
+                        </select>
                     </div>
-                </form>
-            </Modal>
 
-            <ConfirmModal
-                isOpen={confirmDelete.isOpen}
-                onClose={() => setConfirmDelete({ isOpen: false, id: null })}
-                onConfirm={handleDelete}
-                title="Excluir orçamento"
-                message="Deseja realmente excluir este orçamento?"
+                    {/* Linha 4: Serviços */}
+                    <div>
+                        <SectionHeader icon={Wrench} title="Serviços" />
+                        <div className="space-y-3">
+                            <SearchableSelect
+                                options={services}
+                                onSelect={handleAddServiceToOS}
+                                onCreate={handleCreateServiceRequest}
+                                onEdit={(s) => { setEditingService(s); setIsServiceModalOpen(true); }}
+                                onDelete={onDeleteService}
+                                placeholder="Buscar ou criar serviço..."
+                                icon={Search}
+                            />
+
+                            <div className="space-y-2">
+                                {formData.services.map((service, index) => (
+                                    <div key={`s-${index}`} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 p-2 rounded text-sm border border-gray-200 dark:border-gray-600">
+                                        <div className="flex-1 truncate mr-2 font-medium">{service.name}</div>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                value={service.quantity}
+                                                onChange={(e) => handleUpdateServiceInOS(index, 'quantity', Number(e.target.value))}
+                                                className="w-12 p-1 text-center border rounded text-xs"
+                                                min="1"
+                                            />
+                                            <span className="text-xs font-semibold w-20 text-right">R$ {(service.price * service.quantity).toFixed(2)}</span>
+                                            <button type="button" onClick={() => handleRemoveServiceFromOS(index)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Linha 5: Peças */}
+                    <div>
+                        <SectionHeader icon={Package} title="Peças" />
+                        <div className="space-y-3">
+                            <SearchableSelect
+                                options={parts}
+                                onSelect={handleAddPartToOS}
+                                onCreate={handleCreatePartRequest}
+                                onEdit={(p) => { setEditingPart(p); setIsPartModalOpen(true); }}
+                                onDelete={onDeletePart}
+                                placeholder="Buscar ou criar peça..."
+                                icon={Search}
+                            />
+
+                            <div className="space-y-2">
+                                {formData.parts.map((part, index) => (
+                                    <div key={`p-${index}`} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 p-2 rounded text-sm border border-gray-200 dark:border-gray-600">
+                                        <div className="flex-1 truncate mr-2 font-medium">{part.name}</div>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                value={part.quantity}
+                                                onChange={(e) => handleUpdatePartInOS(index, 'quantity', Number(e.target.value))}
+                                                className="w-12 p-1 text-center border rounded text-xs"
+                                                min="1"
+                                            />
+                                            <span className="text-xs font-semibold w-20 text-right">R$ {(part.price * part.quantity).toFixed(2)}</span>
+                                            <button type="button" onClick={() => handleRemovePartFromOS(index)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {formData.parts.length === 0 && <p className="text-xs text-gray-400 italic py-2">Nenhuma peça selecionada.</p>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Linha 6: Pagamentos */}
+                    <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                        <SectionHeader
+                            icon={CreditCard}
+                            title="Pagamentos"
+                            action={<Button type="button" size="sm" onClick={addPayment} title="Adicionar Pagamento"><Plus size={14} /></Button>}
+                        />
+                        <div className="space-y-2">
+                            {formData.payments.map((payment, index) => (
+                                <div key={index} className="flex gap-2 items-center">
+                                    <Input type="date" value={payment.date} onChange={e => handlePaymentChange(index, 'date', e.target.value)} className="text-xs py-1" />
+                                    <Input type="number" value={payment.amount} onChange={e => handlePaymentChange(index, 'amount', e.target.value)} placeholder="R$" className="text-xs py-1 w-24" />
+                                    <select value={payment.method} onChange={e => handlePaymentChange(index, 'method', e.target.value)} className="p-1 border rounded text-xs flex-1"><option>Pix</option><option>Dinheiro</option><option>Cartão</option></select>
+                                    <button type="button" onClick={() => removePayment(index)} className="text-red-500 hover:text-red-700"><X size={14} /></button>
+                                </div>
+                            ))}
+                            {formData.payments.length === 0 && <p className="text-xs text-gray-400 italic">Nenhum pagamento registrado.</p>}
+                        </div>
+                        <div className="mt-3 flex justify-end items-center gap-4 text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Total Pago: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaid)}</span>
+                            <span className={`font-bold ${remainingBalance <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                Restante: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(remainingBalance)}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Linha 7: Observações */}
+                    <div className="bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm">
+                        <SectionHeader icon={FileText} title="Observações / Mão de Obra" />
+                        <textarea
+                            name="laborDescription"
+                            value={formData.laborDescription}
+                            onChange={handleChange}
+                            placeholder="Descreva detalhes técnicos, problemas relatados ou observações gerais..."
+                            className="w-full p-2 text-sm border rounded-md bg-gray-50 dark:bg-gray-700 h-20 focus:ring-1 focus:ring-blue-500 resize-none"
+                        />
+                    </div>
+
+                </div>
+
+                {/* Footer com Totais e Ações */}
+                <div className="flex flex-col sm:flex-row justify-between items-center pt-4 border-t gap-4">
+                    <div className="text-xl font-bold text-gray-800 dark:text-white">
+                        Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.totalPrice)}
+                    </div>
+
+                    <div className="flex gap-2 w-full sm:w-auto justify-end">
+                        {os && (
+                            <Button type="button" variant="danger" size="sm" onClick={() => setIsConfirmDeleteOpen(true)} title="Excluir OS">
+                                <Trash2 size={18} />
+                            </Button>
+                        )}
+                        <Button type="button" variant="secondary" size="sm" onClick={generatePDF} title="Gerar PDF">
+                            <Printer size={18} />
+                        </Button>
+                        <div className="w-px bg-gray-300 mx-1"></div>
+                        <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+                        <Button type="submit" size="sm" disabled={isSaving}>
+                            <Save size={18} className="mr-1" /> {isSaving ? "Salvando..." : "Salvar"}
+                        </Button>
+                    </div>
+                </div>
+            </form>
+
+            <QuickClientModal isOpen={isClientModalOpen} onClose={() => setIsClientModalOpen(false)} onSave={onQuickCreateClient} />
+
+            <QuickServiceModal
+                isOpen={isServiceModalOpen}
+                onClose={() => setIsServiceModalOpen(false)}
+                onSave={editingService ? onEditService : onQuickCreateService}
+                initialData={editingService}
+                initialName={newServiceName}
+            />
+
+            <QuickPartModal
+                isOpen={isPartModalOpen}
+                onClose={() => setIsPartModalOpen(false)}
+                onSave={editingPart ? onEditPart : onQuickCreatePart}
+                initialData={editingPart}
+                initialName={newPartName}
+            />
+
+            <ConfirmModal isOpen={isConfirmDeleteOpen} onClose={() => setIsConfirmDeleteOpen(false)} onConfirm={() => { onDelete(os.id); setIsConfirmDeleteOpen(false); }} title="Confirmar exclusão" message="Tem certeza?" />
+        </Modal >
+    );
+};
+
+const Orcamentos = ({ userId, ordensDeServico = [], clients = [], services = [], professionals = [], setNotification }) => {
+    // Estados para dados internos (Novas coleções)
+    const [fetchedOS, setFetchedOS] = useState([]);
+    const [fetchedLegacyOS, setFetchedLegacyOS] = useState([]);
+    const [fetchedClients, setFetchedClients] = useState([]);
+    const [fetchedServices, setFetchedServices] = useState([]);
+    const [fetchedPros, setFetchedPros] = useState([]);
+    const [parts, setParts] = useState([]);
+
+    // Estados para dados unificados
+    const [mergedOS, setMergedOS] = useState([]);
+    const [mergedClients, setMergedClients] = useState([]);
+    const [mergedServices, setMergedServices] = useState([]);
+    const [mergedPros, setMergedPros] = useState([]);
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentOs, setCurrentOs] = useState(null);
+
+    // Filtros
+    const [filterClient, setFilterClient] = useState('');
+    const [filterPlate, setFilterPlate] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+
+    // Busca dados internos (Novas coleções)
+    useEffect(() => {
+        if (!userId) return;
+
+        // OS (Nova coleção)
+        const unsubOS = onSnapshot(query(userCollectionRef(userId, 'ordens-de-servico'), orderBy('createdAt', 'desc')),
+            s => setFetchedOS(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            e => console.error("Erro OS New:", e)
+        );
+        // OS (Coleção Legada - com cedilha)
+        const unsubLegacyOS = onSnapshot(query(userCollectionRef(userId, 'ordens-de-serviço'), orderBy('createdAt', 'desc')),
+            s => setFetchedLegacyOS(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            e => console.error("Erro OS Legacy:", e)
+        );
+        // Clients
+        const unsubClients = onSnapshot(query(userCollectionRef(userId, 'clients'), orderBy('name')),
+            s => setFetchedClients(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            e => console.error("Erro Clients:", e)
+        );
+        // Services
+        const unsubServices = onSnapshot(query(userCollectionRef(userId, 'services'), orderBy('name')),
+            s => setFetchedServices(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            e => console.error("Erro Services:", e)
+        );
+        // Professionals
+        const unsubPros = onSnapshot(query(userCollectionRef(userId, 'professionals'), orderBy('name')),
+            s => setFetchedPros(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            e => console.error("Erro Pros:", e)
+        );
+        // Parts (Só existe novo)
+        const unsubParts = onSnapshot(query(userCollectionRef(userId, 'parts'), orderBy('name')),
+            s => setParts(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            e => console.error("Erro Parts:", e)
+        );
+
+        return () => { unsubOS(); unsubLegacyOS(); unsubClients(); unsubServices(); unsubPros(); unsubParts(); };
+    }, [userId]);
+
+    // Função auxiliar de merge
+    const mergeLists = (listA, listB) => {
+        const combined = [...listA, ...listB];
+        return combined.filter((item, index, self) =>
+            index === self.findIndex((t) => t.id === item.id)
+        );
+    };
+
+    // Efeitos de Merge
+    useEffect(() => {
+        const allFetched = [...fetchedOS, ...fetchedLegacyOS];
+        setMergedOS(mergeLists(ordensDeServico, allFetched));
+    }, [ordensDeServico, fetchedOS, fetchedLegacyOS]);
+    useEffect(() => setMergedClients(mergeLists(clients, fetchedClients)), [clients, fetchedClients]);
+    useEffect(() => setMergedServices(mergeLists(services, fetchedServices)), [services, fetchedServices]);
+    useEffect(() => setMergedPros(mergeLists(professionals, fetchedPros)), [professionals, fetchedPros]);
+
+    const handleSave = async osData => {
+        try {
+            const professional = mergedPros.find(p => p.id === osData.professionalId);
+            const osToSave = { ...osData, professionalName: professional ? professional.name : '' };
+
+            // let savedOsId = osData.id; // Unused in Orcamentos
+
+            if (currentOs) {
+                await updateDoc(userDocRef(userId, 'ordens-de-servico', currentOs.id), osToSave)
+                    .catch(err => {
+                        console.warn("Erro update OS (possivel legado):", err);
+                        setNotification({ type: 'warning', message: 'Editando OS legada. Verifique se salvou.' });
+                    });
+                setNotification({ type: 'success', message: 'Atualizado!' });
+            } else {
+                await addDoc(userCollectionRef(userId, 'ordens-de-servico'), { ...osToSave, createdAt: serverTimestamp() });
+                setNotification({ type: 'success', message: 'Criado!' });
+            }
+
+            return true;
+        } catch (error) {
+            console.error(error);
+            setNotification({ type: 'error', message: 'Erro ao salvar.' });
+            return false;
+        }
+    };
+
+    const handleDelete = async (osId) => {
+        try {
+            // Tenta deletar da coleção nova
+            await deleteDoc(userDocRef(userId, 'ordens-de-servico', osId))
+                .catch(err => console.warn("Erro delete OS New:", err));
+
+            // Tenta deletar da coleção antiga (legado)
+            await deleteDoc(userDocRef(userId, 'ordens-de-serviço', osId))
+                .catch(err => console.warn("Erro delete OS Legacy:", err));
+
+            // Remover financeiro associado
+            try {
+                const finQuery = query(userCollectionRef(userId, 'financeiro'), where('osId', '==', osId));
+                const finDocs = await getDocs(finQuery);
+                finDocs.forEach(d => deleteDoc(d.ref));
+            } catch (e) { console.error("Erro limpar financeiro:", e); }
+
+            setIsModalOpen(false);
+            setNotification({ type: 'success', message: 'Removido!' });
+        } catch (error) { setNotification({ type: 'error', message: 'Erro ao remover.' }); }
+    };
+
+    // Funções de Criação Rápida
+    const handleQuickCreateClient = async (clientData) => {
+        try {
+            await addDoc(userCollectionRef(userId, 'clients'), { ...clientData, createdAt: serverTimestamp() });
+            setNotification({ type: 'success', message: 'Cliente criado!' });
+        } catch (e) { setNotification({ type: 'error', message: 'Erro ao criar cliente.' }); }
+    };
+
+    const handleQuickCreateService = async (serviceData) => {
+        try {
+            await addDoc(userCollectionRef(userId, 'services'), serviceData);
+            setNotification({ type: 'success', message: 'Serviço criado!' });
+        } catch (e) { setNotification({ type: 'error', message: 'Erro ao criar serviço.' }); }
+    };
+
+    const handleQuickCreatePart = async (partData) => {
+        try {
+            await addDoc(userCollectionRef(userId, 'parts'), partData);
+            setNotification({ type: 'success', message: 'Peça criada!' });
+        } catch (e) { setNotification({ type: 'error', message: 'Erro ao criar peça.' }); }
+    };
+
+    // Funções de Edição/Exclusão de Itens do Catálogo
+    const handleEditService = async (serviceData) => {
+        try {
+            if (serviceData.id) {
+                await updateDoc(userDocRef(userId, 'services', serviceData.id), serviceData)
+                    .catch(() => setNotification({ type: 'warning', message: 'Não foi possível editar serviço legado.' }));
+                setNotification({ type: 'success', message: 'Serviço atualizado!' });
+            }
+        } catch (e) { setNotification({ type: 'error', message: 'Erro ao editar serviço.' }); }
+    };
+
+    const handleDeleteService = async (serviceId) => {
+        if (window.confirm("Tem certeza que deseja excluir este serviço do catálogo?")) {
+            try {
+                await deleteDoc(userDocRef(userId, 'services', serviceId))
+                    .catch(() => setNotification({ type: 'warning', message: 'Não foi possível excluir serviço legado.' }));
+                setNotification({ type: 'success', message: 'Serviço excluído!' });
+            } catch (e) { setNotification({ type: 'error', message: 'Erro ao excluir serviço.' }); }
+        }
+    };
+
+    const handleEditPart = async (partData) => {
+        try {
+            if (partData.id) {
+                await updateDoc(userDocRef(userId, 'parts', partData.id), partData);
+                setNotification({ type: 'success', message: 'Peça atualizada!' });
+            }
+        } catch (e) { setNotification({ type: 'error', message: 'Erro ao editar peça.' }); }
+    };
+
+    const handleDeletePart = async (partId) => {
+        if (window.confirm("Tem certeza que deseja excluir esta peça do estoque?")) {
+            try {
+                await deleteDoc(userDocRef(userId, 'parts', partId));
+                setNotification({ type: 'success', message: 'Peça excluída!' });
+            } catch (e) { setNotification({ type: 'error', message: 'Erro ao excluir peça.' }); }
+        }
+    };
+
+    // Filtragem
+    const filteredOS = mergedOS.filter(os => {
+        // Incluir se for explicitamente Orçamento (case insensitive), se tiver status 'Orçamento' ou flag isBudget
+        const type = (os.type || '').toLowerCase();
+        const status = (os.status || '').toLowerCase();
+        const isBudget = type === 'orcamento' || status === 'orcamento' || status === 'orçamento' || os.isBudget === true;
+
+        if (!isBudget) return false;
+
+        const matchClient = filterClient ? (os.clientName || '').toLowerCase().includes(filterClient.toLowerCase()) : true;
+        const matchPlate = filterPlate ? (os.vehiclePlate || '').toLowerCase().includes(filterPlate.toLowerCase()) : true;
+        const matchStatus = filterStatus ? os.status === filterStatus : true;
+        return matchClient && matchPlate && matchStatus;
+    });
+
+    return (
+        <div>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Orçamentos</h1>
+                <Button onClick={() => { setCurrentOs(null); setIsModalOpen(true); }} icon={<Plus size={18} />}>Novo Orçamento</Button>
+            </div>
+
+            {/* Filtros */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Input
+                    placeholder="Filtrar por Cliente"
+                    value={filterClient}
+                    onChange={e => setFilterClient(e.target.value)}
+                    icon={<Search size={18} />}
+                />
+                <Input
+                    placeholder="Filtrar por Placa"
+                    value={filterPlate}
+                    onChange={e => setFilterPlate(e.target.value)}
+                    icon={<Car size={18} />}
+                />
+                <select
+                    value={filterStatus}
+                    onChange={e => setFilterStatus(e.target.value)}
+                    className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:ring-1 focus:ring-blue-500"
+                >
+                    <option value="">Todos os Status</option>
+                    <option value="Pendente">Pendente</option>
+                    <option value="Parcialmente Pago">Parcialmente Pago</option>
+                    <option value="Pago">Pago</option>
+                </select>
+            </div>
+
+            {/* Tabela Simplificada */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                <table className="min-w-full text-left">
+                    <thead className="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            <th className="p-4">Data</th><th className="p-4">Cliente</th><th className="p-4">Veículo</th><th className="p-4">Status</th><th className="p-4">Total</th><th className="p-4">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {filteredOS.length > 0 ? (
+                            filteredOS.map(os => (
+                                <tr key={os.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <td className="p-4 text-sm text-gray-500">
+                                        {os.createdAt?.seconds ? new Date(os.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                                    </td>
+                                    <td className="p-4 font-medium">{os.clientName}</td>
+                                    <td className="p-4">{os.vehiclePlate}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-semibold
+                                            ${os.status === 'Pago' ? 'bg-green-100 text-green-800' :
+                                                os.status === 'Parcialmente Pago' ? 'bg-yellow-100 text-yellow-800' :
+                                                    'bg-red-100 text-red-800'}`}>
+                                            {os.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(os.totalPrice)}</td>
+                                    <td className="p-4"><Button onClick={() => { setCurrentOs(os); setIsModalOpen(true); }} variant="secondary" size="sm"><Edit size={16} /></Button></td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan="6" className="p-8 text-center text-gray-500">Nenhuma OS encontrada.</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            <OrdemDeServicoFormModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                os={currentOs}
+                onSave={handleSave}
+                onDelete={handleDelete}
+                clients={mergedClients}
+                services={mergedServices}
+                parts={parts}
+                professionals={mergedPros}
+                userId={userId}
+                setNotification={setNotification}
+                onQuickCreateClient={handleQuickCreateClient}
+                onQuickCreateService={handleQuickCreateService}
+                onQuickCreatePart={handleQuickCreatePart}
+                onEditService={handleEditService}
+                onDeleteService={handleDeleteService}
+                onEditPart={handleEditPart}
+                onDeletePart={handleDeletePart}
             />
         </div>
     );
 };
 
 export default Orcamentos;
-
-

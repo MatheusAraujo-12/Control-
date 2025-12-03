@@ -1,0 +1,38 @@
+﻿
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-1">
+                            <div className="relative flex-1">
+                                <Input
+                                    value={serviceInput}
+                                    onChange={e => { setServiceInput(e.target.value); setSelectedServiceId(''); }}
+                                    placeholder="Digite o serviÃ§o..."
+                                    icon={<Wrench size={18} />}
+                                />
+                                {serviceInput && (
+                                    <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow">
+                                        {services
+                                            .filter(s => s.name?.toLowerCase().includes(serviceInput.toLowerCase()))
+                                            .slice(0, 6)
+                                            .map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    type="button"
+                                                    onClick={() => { setSelectedServiceId(s.id); setServiceInput(s.name); }}
+                                                    className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                                >
+                                                    {s.name} â€” {formatCurrency(s.price)}
+                                                </button>
+                                            ))}
+                                        {!services.some(s => s.name?.toLowerCase() === serviceInput.toLowerCase()) && (
+                                            <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300">
+                                                ServiÃ§o nÃ£o encontrado. Clique em Incluir para cadastrar.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <Input type="number" value={servicePriceInput} onChange={e => setServicePriceInput(e.target.value)} placeholder="PreÃ§o" className="w-28" icon={<DollarSign size={16} />} />
+                            <Input type="number" value={serviceQtyInput} onChange={e => setServiceQtyInput(e.target.value)} placeholder="Qtd" className="w-24" icon={<Hash size={16} />} />
+                            <Button type="button" variant="secondary" icon={<Wrench size={10} />} onClick={handleAddService}>Incluir</Button>
+                        </div>
+                        {formData.services.length === 0 ? (

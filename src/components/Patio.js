@@ -1,665 +1,297 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { query, getDocs, addDoc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { userCollectionRef, userDocRef } from '../firebase';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Car, ClipboardList, MapPin, AlertTriangle, CheckCircle, Trash2, Calendar as CalendarIcon, Plus } from 'lucide-react';
+import { Card } from './ui/Card';
+import { Car, Clock, CheckCircle, LogIn, LogOut, AlertCircle, Search } from 'lucide-react';
 
-const statusOptions = [
-    { value: 'recebido', label: 'Recebido no pátio' },
-    { value: 'diagnostico', label: 'Em diagnóstico' },
-    { value: 'aguardando_peças', label: 'Aguardando peças' },
-    { value: 'manutenção', label: 'Em manutenção' },
-    { value: 'lavagem', label: 'Em lavagem' },
-    { value: 'liberado', label: 'Liberado para entrega' },
-];
-
-const priorityOptions = [
-    { value: 'alta', label: 'Alta' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'baixa', label: 'Baixa' },
-];
-
-const createEmptyRecord = () => ({
-    clientId: '',
-    clientName: '',
-    vehiclePlate: '',
-    vehicleModel: '',
-    vehicleBrand: '',
-    bay: '',
-    status: 'recebido',
-    priority: 'normal',
-    notes: '',
-    expectedDelivery: '',
-    appointmentDate: '',
-    professionalId: '',
-    professionalName: '',
-    appointmentId: '',
-});
-
-const normalizeForForm = (record) => ({
-    ...record,
-    appointmentDate: record.appointmentDate ? new Date(record.appointmentDate).toISOString().slice(0, 16) : '',
-    expectedDelivery: record.expectedDelivery ? new Date(record.expectedDelivery).toISOString().slice(0, 16) : '',
-});
-
-const YardFormModal = ({ isOpen, onClose, vehicle, onSave, clients, professionals, canEdit }) => {
-    const [formData, setFormData] = useState(() => createEmptyRecord());
-
-    const [isSaving, setIsSaving] = useState(false);
-    const isReadOnly = !canEdit;
-
-    useEffect(() => {
-        if (vehicle) {
-            setFormData(normalizeForForm({ ...createEmptyRecord(), ...vehicle }));
-        } else {
-            setFormData(createEmptyRecord());
-        }
-    }, [vehicle, isOpen]);
-
-    const handleClientChange = (event) => {
-        const clientId = event.target.value;
-        const selectedClient = clients.find((client) => client.id === clientId);
-        setFormData((prev) => ({
-            ...prev,
-            clientId,
-            clientName: selectedClient?.name || prev.clientName,
-            vehicleBrand: selectedClient?.vehicleBrand || prev.vehicleBrand,
-            vehicleModel: selectedClient?.vehicleModel || prev.vehicleModel,
-            vehiclePlate: selectedClient?.vehiclePlate || prev.vehiclePlate,
-        }));
-    };
-
-    const handleProfessionalChange = (event) => {
-        const professionalId = event.target.value;
-        const selectedProfessional = professionals.find((prof) => prof.id === professionalId);
-        setFormData((prev) => ({
-            ...prev,
-            professionalId,
-            professionalName: selectedProfessional?.name || '',
-        }));
-    };
-
-    const handleChange = (event) => {
-        const { name, value } = event.target;
-        setFormData((prev) => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = async (event) => {
-        event.preventDefault();
-        if (!canEdit) {
-            onClose();
-            return;
-        }
-        setIsSaving(true);
-        try {
-            const success = await onSave(formData);
-            if (success) {
-                onClose();
-            }
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={vehicle ? 'Editar veículo no pátio' : 'Registrar entrada no pátio'}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <fieldset disabled={isReadOnly} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium">Cliente</label>
-                    <select
-                        name="clientId"
-                        value={formData.clientId}
-                        onChange={handleClientChange}
-                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                        required
-                    >
-                        <option value="">Selecione um cliente</option>
-                        {clients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                                {client.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                <Input name="clientName" value={formData.clientName} onChange={handleChange} placeholder="Nome do cliente" icon={<ClipboardList size={18} />} required />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input name="vehicleBrand" value={formData.vehicleBrand} onChange={handleChange} placeholder="Marca" icon={<Car size={18} />} />
-                    <Input name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} placeholder="Modelo" icon={<Car size={18} />} />
-                    <Input name="vehiclePlate" value={formData.vehiclePlate} onChange={handleChange} placeholder="Placa" icon={<ClipboardList size={18} />} required />
-                    <Input name="bay" value={formData.bay} onChange={handleChange} placeholder="Box/Setor" icon={<MapPin size={18} />} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium">Status</label>
-                        <select name="status" value={formData.status} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                            {statusOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium">Prioridade</label>
-                        <select name="priority" value={formData.priority} onChange={handleChange} className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                            {priorityOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium">Técnico responsável</label>
-                    <select
-                        name="professionalId"
-                        value={formData.professionalId}
-                        onChange={handleProfessionalChange}
-                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                        required
-                    >
-                        <option value="">Selecione um técnico</option>
-                        {professionals.map((professional) => (
-                            <option key={professional.id} value={professional.id}>
-                                {professional.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                <Input
-                    name="appointmentDate"
-                    type="datetime-local"
-                    value={formData.appointmentDate}
-                    onChange={handleChange}
-                    placeholder="Data e hora do agendamento"
-                    icon={<CalendarIcon size={18} />}
-                    required
-                />
-
-                <div>
-                    <label className="block text-sm font-medium">Observações</label>
-                    <textarea
-                        name="notes"
-                        value={formData.notes}
-                        onChange={handleChange}
-                        className="w-full mt-1 p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                        rows={3}
-                        placeholder="Anote aprovações, pendências de peças ou solicitações do cliente"
-                    ></textarea>
-                </div>
-                </fieldset>
-                {isReadOnly && (
-                    <p className="text-sm text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/30 rounded-lg px-3 py-2">
-                        Voce nao tem permissao para registrar ou editar veiculos no patio. Solicite ao administrador o acesso de edicao.
-                    </p>
-                )}
-                <div className="flex justify-end gap-3">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                    <Button type="submit" disabled={isSaving || isReadOnly}>{isSaving ? 'Salvando...' : 'Salvar'}</Button>
-                </div>
-            </form>
-        </Modal>
-    );
-};
-
-const Patio = ({ userId, vehicles, professionals, clients, setNotification, canEdit = false }) => {
+const Patio = ({ userId }) => {
+    const [vehicles, setVehicles] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedVehicle, setSelectedVehicle] = useState(null);
+    const [currentVehicle, setCurrentVehicle] = useState(null);
 
-    const vehiclesOrdenados = useMemo(() => {
-        const priorityWeight = { alta: 0, normal: 1, baixa: 2 };
-        return [...vehicles]
-            .filter((vehicle) => !vehicle.exitTime)
-            .sort((a, b) => {
-                const priorityDiff = (priorityWeight[a.priority] ?? 1) - (priorityWeight[b.priority] ?? 1);
-                if (priorityDiff !== 0) {
-                    return priorityDiff;
-                }
-                return new Date(a.entryTime) - new Date(b.entryTime);
-            });
-    }, [vehicles]);
+    const [formData, setFormData] = useState({
+        clientName: '',
+        vehiclePlate: '',
+        vehicleModel: '',
+        vehicleBrand: '',
+        vehicleColor: '',
+        notes: '',
+        status: 'Na Oficina'
+    });
 
-    const historico = useMemo(() => vehicles.filter((vehicle) => !!vehicle.exitTime), [vehicles]);
+    // Carregar veículos no pátio
+    useEffect(() => {
+        const fetchPatio = async () => {
+            if (!userId) return;
+            try {
+                // Buscar veículos ordenados por entrada
+                const q = query(userCollectionRef(userId, 'patio'), orderBy('entryDate', 'desc'));
+                const snapshot = await getDocs(q);
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setVehicles(data);
+            } catch (error) {
+                console.error("Erro ao buscar pátio:", error);
+            }
+        };
 
-    const toIsoOrNull = (value) => {
-        if (!value) {
-            return null;
-        }
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) {
-            return null;
-        }
-        return parsed.toISOString();
-    };
+        fetchPatio();
+    }, [userId, isModalOpen]);
 
-    const handleSaveVehicle = async (data) => {
-        if (!userId) {
-            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
-            return;
-        }
-        if (!canEdit) {
-            setNotification({ type: 'error', message: 'Voce nao tem permissao para registrar veiculos.' });
-            return;
-        }
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!userId) return;
+
         try {
-            const appointmentIso = toIsoOrNull(data.appointmentDate);
-            if (!data.clientId || !data.professionalId || !appointmentIso) {
-                setNotification({ type: 'error', message: 'Selecione cliente, técnico e informe um horério válido.' });
-                return;
-            }
-
-            const expectedDeliveryIso = toIsoOrNull(data.expectedDelivery) || '';
-            const client = clients.find((item) => item.id === data.clientId);
-            const professional = professionals.find((item) => item.id === data.professionalId);
-
-            const yardPayload = {
-                clientId: data.clientId,
-                clientName: client?.name || data.clientName,
-                vehiclePlate: data.vehiclePlate,
-                vehicleModel: data.vehicleModel,
-                vehicleBrand: data.vehicleBrand,
-                bay: data.bay,
-                status: data.status,
-                priority: data.priority,
-                notes: data.notes,
-                expectedDelivery: expectedDeliveryIso,
-                entryTime: selectedVehicle?.entryTime || new Date().toISOString(),
-                appointmentDate: appointmentIso,
-                professionalId: data.professionalId,
-                professionalName: professional?.name || '',
-                appointmentId: selectedVehicle?.appointmentId || '',
-            };
-
-            let yardDocId = selectedVehicle?.id;
-
-            if (selectedVehicle) {
-                await updateDoc(userDocRef(userId, 'yard', selectedVehicle.id), yardPayload);
+            if (currentVehicle) {
+                await updateDoc(userDocRef(userId, 'patio', currentVehicle.id), formData);
             } else {
-                const yardRef = await addDoc(userCollectionRef(userId, 'yard'), yardPayload);
-                yardDocId = yardRef.id;
+                await addDoc(userCollectionRef(userId, 'patio'), {
+                    ...formData,
+                    entryDate: serverTimestamp(),
+                    osLinked: false // Manual
+                });
             }
-
-            const appointmentPayload = {
-                clientId: data.clientId,
-                clientName: client?.name || data.clientName,
-                professionalId: data.professionalId,
-                professionalName: professional?.name || '',
-                services: selectedVehicle?.services || [],
-                date: appointmentIso,
-                status: 'agendado',
-                vehicleBrand: data.vehicleBrand,
-                vehicleModel: data.vehicleModel,
-                vehiclePlate: data.vehiclePlate,
-                notes: data.notes,
-                partsCost: selectedVehicle?.partsCost || 0,
-                paymentMethod: selectedVehicle?.paymentMethod || 'pix',
-                totalPrice: selectedVehicle?.totalPrice || 0,
-            };
-
-            let appointmentId = selectedVehicle?.appointmentId;
-            if (appointmentId) {
-                await updateDoc(userDocRef(userId, 'appointments', appointmentId), appointmentPayload);
-            } else {
-                const appointmentRef = await addDoc(userCollectionRef(userId, 'appointments'), appointmentPayload);
-                appointmentId = appointmentRef.id;
-                await updateDoc(userDocRef(userId, 'yard', yardDocId), { appointmentId });
-            }
-
             setIsModalOpen(false);
-            setSelectedVehicle(null);
-            setNotification({ type: 'success', message: 'Veículo registrado e agendamento criado!' });
+            setCurrentVehicle(null);
+            setFormData({ clientName: '', vehiclePlate: '', vehicleModel: '', vehicleBrand: '', vehicleColor: '', notes: '', status: 'Na Oficina' });
         } catch (error) {
-            console.error('Erro ao salvar registro do pátio:', error);
-            setNotification({ type: 'error', message: 'Não foi possível salvar o registro.' });
+            console.error("Erro ao salvar veículo:", error);
         }
     };
 
-    const handleLiberarVeiculo = async (vehicle) => {
-        if (!userId) {
-            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
-            return;
-        }
-        if (!canEdit) {
-            setNotification({ type: 'error', message: 'Voce nao tem permissao para editar veiculos no patio.' });
-            return;
-        }
+    const handleExit = async (vehicle) => {
+        if (!window.confirm(`Confirmar saída do veículo ${vehicle.vehiclePlate}?`)) return;
         try {
-            await updateDoc(userDocRef(userId, 'yard', vehicle.id), {
-                status: 'liberado',
-                exitTime: new Date().toISOString(),
+            await updateDoc(userDocRef(userId, 'patio', vehicle.id), {
+                status: 'Saída',
+                exitDate: serverTimestamp()
             });
-            setNotification({ type: 'success', message: 'Veículo liberado com sucesso!' });
-
-            if (vehicle.appointmentId) {
-
-                await updateDoc(userDocRef(userId, 'appointments', vehicle.appointmentId), { status: 'finalizado' });
-
-            }
+            // Atualizar lista localmente
+            setVehicles(prev => prev.map(v => v.id === vehicle.id ? { ...v, status: 'Saída', exitDate: { seconds: Date.now() / 1000 } } : v));
         } catch (error) {
-            console.error('Erro ao liberar veículo:', error);
-            setNotification({ type: 'error', message: 'Não foi possivel liberar o veículo.' });
+            console.error("Erro ao registrar saída:", error);
         }
     };
 
-    const handleRemoverRegistro = async (vehicle) => {
-        if (!userId) {
-            setNotification({ type: 'error', message: 'Sessão expirada. Faça login novamente.' });
-            return;
-        }
-        if (!canEdit) {
-            setNotification({ type: 'error', message: 'Voce nao tem permissao para remover registros do patio.' });
-            return;
-        }
-        try {
-            await deleteDoc(userDocRef(userId, 'yard', vehicle.id));
-            setNotification({ type: 'success', message: 'Registro removido do pátio.' });
-        } catch (error) {
-            console.error('Erro ao remover registro do pátio:', error);
-            setNotification({ type: 'error', message: 'Não foi possível remover o registro.' });
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Na Oficina': return 'bg-blue-100 text-blue-800 border-blue-200';
+            case 'Em Serviço': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+            case 'Aguardando Peças': return 'bg-orange-100 text-orange-800 border-orange-200';
+            case 'Pronto': return 'bg-green-100 text-green-800 border-green-200';
+            case 'Saída': return 'bg-gray-100 text-gray-600 border-gray-200';
+            default: return 'bg-gray-100 text-gray-800';
         }
     };
+
+    const filteredVehicles = vehicles.filter(v =>
+        v.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.vehiclePlate?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.vehicleModel?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const activeVehicles = filteredVehicles.filter(v => v.status !== 'Saída');
+    const historyVehicles = filteredVehicles.filter(v => v.status === 'Saída');
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Controle de pátio</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Organize os veículos presentes na oficina e gere agendamentos automaticamente.</p>
-                </div>
-                <Button
-                    onClick={canEdit ? () => { setSelectedVehicle(null); setIsModalOpen(true); } : undefined}
-                    icon={<Plus size={18} />}
-                    className="w-full md:w-auto"
-                    disabled={!canEdit}
-                    title={canEdit ? undefined : 'Necessario permissao de edicao do patio'}
-                >
-                    Registrar entrada
-                </Button>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                        <h2 className="text-xl font-semibold">Veículos no pátio ({vehiclesOrdenados.length})</h2>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">Prioridade e permanência</span>
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Controle de Pátio</h1>
+                <div className="flex gap-2 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:w-64">
+                        <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Buscar placa, cliente..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 p-2 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700"
+                        />
                     </div>
-                    <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
-                                <tr>
-                                    <th className="p-4 font-semibold">Veículo</th>
-                                    <th className="p-4 font-semibold">Placa</th>
-                                    <th className="p-4 font-semibold">Técnico</th>
-                                    <th className="p-4 font-semibold">Agendamento</th>
-                                    <th className="p-4 font-semibold">Status</th>
-                                    <th className="p-4 font-semibold">Box</th>
-                                    <th className="p-4 font-semibold">Prioridade</th>
-                                    <th className="p-4 font-semibold">Entrada</th>
-                                    <th className="p-4 font-semibold">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                {vehiclesOrdenados.length > 0 ? (
-                                    vehiclesOrdenados.map((vehicle) => (
-                                        <tr key={vehicle.id}>
-                                            <td className="p-4">
-                                                <p className="font-semibold text-gray-800 dark:text-gray-200">{vehicle.vehicleBrand} {vehicle.vehicleModel}</p>
-                                                <p className="text-sm text-gray-500 dark:text-gray-400">{vehicle.clientName}</p>
-                                            </td>
-                                            <td className="p-4 font-mono">{vehicle.vehiclePlate}</td>
-                                            <td className="p-4">{vehicle.professionalName || '--'}</td>
-                                            <td className="p-4 text-sm">{vehicle.appointmentDate ? new Date(vehicle.appointmentDate).toLocaleString('pt-BR') : '--'}</td>
-                                            <td className="p-4">
-                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                                                    {statusOptions.find((option) => option.value === vehicle.status)?.label || vehicle.status}
-                                                </span>
-                                            </td>
-                                            <td className="p-4">{vehicle.bay || '--'}</td>
-                                            <td className="p-4">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${vehicle.priority === 'alta' ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' : vehicle.priority === 'baixa' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'}`}>
-                                                    {priorityOptions.find((option) => option.value === vehicle.priority)?.label || vehicle.priority}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-sm">{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</td>
-                                            <td className="p-4">
-                                                {canEdit ? (
-                                                    <div className="flex flex-wrap justify-end gap-2">
-                                                        <Button variant="secondary" className="px-3 py-1 text-sm" onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}>Editar</Button>
-                                                        <Button variant="success" className="px-3 py-1 text-sm" onClick={() => handleLiberarVeiculo(vehicle)} icon={<CheckCircle size={16} />}>Liberar</Button>
-                                                        <Button variant="danger" className="px-3 py-1 text-sm" onClick={() => handleRemoverRegistro(vehicle)} icon={<Trash2 size={16} />}>Remover</Button>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400">Sem permissao de edicao</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td className="p-4 text-center text-gray-500" colSpan={9}>Nenhum veículo registrado no pátio.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div className="md:hidden border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
-                        {vehiclesOrdenados.length === 0 ? (
-                            <p className="text-sm text-center text-gray-500 dark:text-gray-400">Nenhum veículo registrado no pátio.</p>
-                        ) : (
-                            vehiclesOrdenados.map((vehicle) => {
-                                const statusLabel = statusOptions.find((option) => option.value === vehicle.status)?.label || vehicle.status;
-                                const priorityLabel = priorityOptions.find((option) => option.value === vehicle.priority)?.label || vehicle.priority;
-                                return (
-                                    <div key={vehicle.id} className="bg-white dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4 space-y-3">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                                                    {[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veículo sem descrição'}
-                                                </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.clientName || 'Cliente não informado'}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="font-mono text-sm text-gray-700 dark:text-gray-200">{vehicle.vehiclePlate || '--'}</span>
-                                                {vehicle.bay ? (
-                                                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Box {vehicle.bay}</p>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                                                {statusLabel}
-                                            </span>
-                                            <span
-                                                className={`inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold ${
-                                                    vehicle.priority === 'alta'
-                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
-                                                        : vehicle.priority === 'baixa'
-                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                                                            : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-                                                }`}
-                                            >
-                                                {priorityLabel}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                                            <div>
-                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Técnico responsável</span>
-                                                <span>{vehicle.professionalName || '--'}</span>
-                                            </div>
-                                            <div>
-                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Agendamento</span>
-                                                <span>{vehicle.appointmentDate ? new Date(vehicle.appointmentDate).toLocaleString('pt-BR') : '--'}</span>
-                                            </div>
-                                            <div>
-                                                <span className="block font-medium text-gray-500 dark:text-gray-400">Entrada no pátio</span>
-                                                <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
-                                            </div>
-                                        </div>
-                                        {canEdit ? (
-                                            <div className="flex flex-wrap gap-2">
-                                                <Button
-                                                    variant="secondary"
-                                                    className="flex-1 min-w-[120px]"
-                                                    onClick={() => { setSelectedVehicle(vehicle); setIsModalOpen(true); }}
-                                                >
-                                                    Editar
-                                                </Button>
-                                                <Button
-                                                    variant="success"
-                                                    className="flex-1 min-w-[120px]"
-                                                    onClick={() => handleLiberarVeiculo(vehicle)}
-                                                    icon={<CheckCircle size={16} />}
-                                                >
-                                                    Liberar
-                                                </Button>
-                                                <Button
-                                                    variant="danger"
-                                                    className="flex-1 min-w-[120px]"
-                                                    onClick={() => handleRemoverRegistro(vehicle)}
-                                                    icon={<Trash2 size={16} />}
-                                                >
-                                                    Remover
-                                                </Button>
-                                            </div>
-                                        ) : (
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">Sem permissao de edicao</p>
-                                        )}
-
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                        <h2 className="text-xl font-semibold">Resumo rapido</h2>
-                    </div>
-                    <div className="p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">Total no pátio</p>
-                                <p className="text-2xl font-bold">{vehiclesOrdenados.length}</p>
-                            </div>
-                            <Car className="text-blue-500" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Status dos veículos</p>
-                            <div className="space-y-2">
-                                {statusOptions.map((option) => {
-                                    const count = vehiclesOrdenados.filter((vehicle) => vehicle.status === option.value).length;
-                                    return (
-                                        <div key={option.value} className="flex items-center justify-between text-sm">
-                                            <span>{option.label}</span>
-                                            <span className="font-semibold">{count}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Prioridades</p>
-                            <div className="space-y-2">
-                                {priorityOptions.map((option) => {
-                                    const count = vehiclesOrdenados.filter((vehicle) => vehicle.priority === option.value).length;
-                                    return (
-                                        <div key={option.value} className="flex items-center justify-between text-sm">
-                                            <span>{option.label}</span>
-                                            <span className="font-semibold">{count}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
+                    <Button onClick={() => { setCurrentVehicle(null); setIsModalOpen(true); }} icon={<LogIn size={18} />}>Entrada Manual</Button>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-                    <AlertTriangle className="text-yellow-500" />
-                    <div>
-                        <h2 className="text-xl font-semibold">Histórico recente</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Últimos veículos liberados para consulta rápida.</p>
-                    </div>
-                </div>
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="p-4 font-semibold">Veículo</th>
-                                <th className="p-4 font-semibold">Placa</th>
-                                <th className="p-4 font-semibold">Entrada</th>
-                                <th className="p-4 font-semibold">Saída</th>
-                                <th className="p-4 font-semibold">Notas</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {historico.length > 0 ? (
-                                historico.slice(-10).reverse().map((vehicle) => (
-                                    <tr key={vehicle.id}>
-                                        <td className="p-4">{vehicle.vehicleBrand} {vehicle.vehicleModel}</td>
-                                        <td className="p-4">{vehicle.vehiclePlate}</td>
-                                        <td className="p-4">{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</td>
-                                        <td className="p-4">{vehicle.exitTime ? new Date(vehicle.exitTime).toLocaleString('pt-BR') : '--'}</td>
-                                        <td className="p-4 text-sm text-gray-500 dark:text-gray-400">{vehicle.notes || '--'}</td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td className="p-4 text-center text-gray-500" colSpan={5}>Não há histórico de saídas.</td>
-                                </tr>
+            {/* Veículos no Pátio (Cards) */}
+            <div>
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <Car className="text-blue-600" /> Veículos no Pátio ({activeVehicles.length})
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {activeVehicles.map(vehicle => (
+                        <Card key={vehicle.id} className="border-l-4 border-l-blue-500 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-2">
+                                <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(vehicle.status)}`}>
+                                    {vehicle.status}
+                                </span>
+                            </div>
+
+                            <div className="mb-4">
+                                <h3 className="text-lg font-bold">{vehicle.vehicleModel} - {vehicle.vehicleBrand}</h3>
+                                <p className="text-2xl font-mono text-gray-700 dark:text-gray-300 my-1">{vehicle.vehiclePlate}</p>
+                                <p className="text-sm text-gray-500">{vehicle.clientName}</p>
+                                {vehicle.vehicleColor && <p className="text-xs text-gray-400 mt-1">Cor: {vehicle.vehicleColor}</p>}
+                            </div>
+
+                            {/* Timeline Simplificada */}
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-4 bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                                <Clock size={14} />
+                                <span>Entrada: {vehicle.entryDate ? new Date(vehicle.entryDate.seconds * 1000).toLocaleString() : 'N/A'}</span>
+                            </div>
+
+                            {vehicle.notes && (
+                                <div className="mb-4 text-sm bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded text-yellow-800 dark:text-yellow-200 flex gap-2">
+                                    <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                                    <p>{vehicle.notes}</p>
+                                </div>
                             )}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="md:hidden border-t border-gray-200 dark:border-gray-700 p-4 space-y-3">
-                    {historico.length > 0 ? (
-                        historico.slice(-10).reverse().map((vehicle) => (
-                            <div key={vehicle.id} className="bg-white dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-2">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Veículo'}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{vehicle.notes || 'Sem observações'}</p>
-                                    </div>
-                                    <span className="font-mono text-sm text-gray-700 dark:text-gray-200">{vehicle.vehiclePlate || '--'}</span>
-                                </div>
-                                <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                                    <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Entrada</span>
-                                        <span>{vehicle.entryTime ? new Date(vehicle.entryTime).toLocaleString('pt-BR') : '--'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block font-medium text-gray-500 dark:text-gray-400">Saída</span>
-                                        <span>{vehicle.exitTime ? new Date(vehicle.exitTime).toLocaleString('pt-BR') : '--'}</span>
-                                    </div>
-                                </div>
+
+                            <div className="flex justify-end gap-2 mt-auto">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setCurrentVehicle(vehicle);
+                                        setFormData({
+                                            clientName: vehicle.clientName,
+                                            vehiclePlate: vehicle.vehiclePlate,
+                                            vehicleModel: vehicle.vehicleModel,
+                                            vehicleBrand: vehicle.vehicleBrand,
+                                            vehicleColor: vehicle.vehicleColor || '',
+                                            notes: vehicle.notes || '',
+                                            status: vehicle.status
+                                        });
+                                        setIsModalOpen(true);
+                                    }}
+                                >
+                                    Editar
+                                </Button>
+                                <Button variant="danger" size="sm" onClick={() => handleExit(vehicle)} icon={<LogOut size={16} />}>
+                                    Saída
+                                </Button>
                             </div>
-                        ))
-                    ) : (
-                        <p className="text-sm text-center text-gray-500 dark:text-gray-400">Não há histórico de saídas.</p>
+                        </Card>
+                    ))}
+                    {activeVehicles.length === 0 && (
+                        <div className="col-span-full text-center p-8 text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300">
+                            Nenhum veículo no pátio no momento.
+                        </div>
                     )}
                 </div>
             </div>
 
-            <YardFormModal
+            {/* Histórico Recente (Tabela) */}
+            {historyVehicles.length > 0 && (
+                <div className="mt-8">
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <CheckCircle className="text-green-600" /> Histórico de Saídas
+                    </h2>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                        <table className="min-w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th className="p-3">Veículo</th>
+                                    <th className="p-3">Placa</th>
+                                    <th className="p-3">Cliente</th>
+                                    <th className="p-3">Entrada</th>
+                                    <th className="p-3">Saída</th>
+                                    <th className="p-3">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                {historyVehicles.slice(0, 10).map(v => (
+                                    <tr key={v.id}>
+                                        <td className="p-3">{v.vehicleBrand} {v.vehicleModel}</td>
+                                        <td className="p-3 font-mono">{v.vehiclePlate}</td>
+                                        <td className="p-3">{v.clientName}</td>
+                                        <td className="p-3">{v.entryDate ? new Date(v.entryDate.seconds * 1000).toLocaleDateString() : '--'}</td>
+                                        <td className="p-3">{v.exitDate ? new Date(v.exitDate.seconds * 1000).toLocaleDateString() : '--'}</td>
+                                        <td className="p-3"><span className="px-2 py-1 bg-gray-100 rounded-full text-xs">Saída</span></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Entrada/Edição */}
+            <Modal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                vehicle={selectedVehicle}
-                onSave={handleSaveVehicle}
-                clients={clients}
-                professionals={professionals}
-                canEdit={canEdit}
-            />
+                title={currentVehicle ? 'Atualizar Veículo' : 'Registrar Entrada'}
+            >
+                <form onSubmit={handleSave} className="space-y-4">
+                    <Input
+                        name="clientName"
+                        value={formData.clientName}
+                        onChange={e => setFormData({ ...formData, clientName: e.target.value })}
+                        placeholder="Nome do Cliente"
+                        required
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            name="vehiclePlate"
+                            value={formData.vehiclePlate}
+                            onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value.toUpperCase() })}
+                            placeholder="Placa"
+                            required
+                        />
+                        <Input
+                            name="vehicleColor"
+                            value={formData.vehicleColor}
+                            onChange={e => setFormData({ ...formData, vehicleColor: e.target.value })}
+                            placeholder="Cor"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            name="vehicleBrand"
+                            value={formData.vehicleBrand}
+                            onChange={e => setFormData({ ...formData, vehicleBrand: e.target.value })}
+                            placeholder="Marca"
+                        />
+                        <Input
+                            name="vehicleModel"
+                            value={formData.vehicleModel}
+                            onChange={e => setFormData({ ...formData, vehicleModel: e.target.value })}
+                            placeholder="Modelo"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Status Atual</label>
+                        <select
+                            value={formData.status}
+                            onChange={e => setFormData({ ...formData, status: e.target.value })}
+                            className="w-full p-2 border rounded bg-white dark:bg-gray-700"
+                        >
+                            <option value="Na Oficina">Na Oficina</option>
+                            <option value="Em Serviço">Em Serviço</option>
+                            <option value="Aguardando Peças">Aguardando Peças</option>
+                            <option value="Pronto">Pronto</option>
+                            <option value="Saída">Saída (Finalizar)</option>
+                        </select>
+                    </div>
+
+                    <textarea
+                        value={formData.notes}
+                        onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                        placeholder="Observações (avarias, nível de combustível, etc)"
+                        className="w-full p-2 border rounded bg-white dark:bg-gray-700 h-24"
+                    />
+
+                    <div className="flex justify-end pt-4">
+                        <Button type="submit">Salvar</Button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };
 
 export default Patio;
-
-
