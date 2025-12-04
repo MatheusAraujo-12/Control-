@@ -22,7 +22,7 @@ const PasswordRecovery = ({ onBackToLogin, setNotification }) => {
         try {
             // Configuração para tratar o código na própria aplicação
             const actionCodeSettings = {
-                url: `${window.location.origin}${window.location.pathname}?mode=resetPassword`,
+                url: `${window.location.origin}/reset-password`,
                 handleCodeInApp: true,
             };
             // Corrigido a chamada do Firebase com actionCodeSettings
