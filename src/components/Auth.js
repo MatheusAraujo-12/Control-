@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     auth,
     db,
@@ -10,6 +10,7 @@ import {
     setDoc,
 } from '../firebase';
 import PasswordRecovery from './PasswordRecovery';
+import ResetPassword from './ResetPassword';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Mail, LockKeyhole, Phone, IdCard, Calendar, UserPlus } from 'lucide-react';
@@ -49,9 +50,11 @@ const Auth = ({ setNotification }) => {
     const [mode, setMode] = useState('login');
     const [formData, setFormData] = useState(initialFormState);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [resetCode, setResetCode] = useState('');
 
     const isRegister = mode === 'register';
     const isRecover = mode === 'recover';
+    const isReset = mode === 'reset';
 
     const title = useMemo(
         // Corrigido 'Crie sua conta' e 'Acesse sua conta'
@@ -67,6 +70,33 @@ const Auth = ({ setNotification }) => {
     const resetForm = () => {
         setFormData(initialFormState);
     };
+
+    const clearActionParams = () => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        ['mode', 'oobCode', 'lang'].forEach(key => params.delete(key));
+        const query = params.toString();
+        const newUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+        window.history.replaceState({}, '', newUrl);
+    };
+
+    const goToLogin = () => {
+        clearActionParams();
+        resetForm();
+        setMode('login');
+        setResetCode('');
+    };
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const modeParam = params.get('mode');
+        const oob = params.get('oobCode');
+        if (modeParam === 'resetPassword' && oob) {
+            setMode('reset');
+            setResetCode(oob);
+        }
+    }, []);
 
     const handleSubmit = async event => {
         event.preventDefault();
@@ -127,14 +157,21 @@ const Auth = ({ setNotification }) => {
         resetForm();
     };
 
+    if (isReset) {
+        return (
+            <ResetPassword
+                oobCode={resetCode}
+                setNotification={setNotification}
+                onBackToLogin={goToLogin}
+            />
+        );
+    }
+
     if (isRecover) {
         return (
             <PasswordRecovery
                 setNotification={setNotification}
-                onBackToLogin={() => {
-                    resetForm();
-                    setMode('login');
-                }}
+                onBackToLogin={goToLogin}
             />
         );
     }

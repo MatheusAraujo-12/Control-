@@ -20,25 +20,31 @@ const PasswordRecovery = ({ onBackToLogin, setNotification }) => {
 
         setIsSending(true);
         try {
-            await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+            // Configuração para tratar o código na própria aplicação
+            const actionCodeSettings = {
+                url: `${window.location.origin}${window.location.pathname}?mode=resetPassword`,
+                handleCodeInApp: true,
+            };
+            // Corrigido a chamada do Firebase com actionCodeSettings
+            await sendPasswordResetEmail(auth, email.trim().toLowerCase(), actionCodeSettings); 
             setSent(true);
             setNotification?.({
                 type: 'success',
-                // Corrigido 'redefinição' e 'e-mail'
+                // Corrigido 'Enviamos', 'redefinição' e 'e-mail'
                 message: 'Enviamos um link de redefinição para o seu e-mail.',
             });
         } catch (error) {
             console.error('Erro ao solicitar redefinição:', error);
             const code = error?.code || '';
             const messages = {
-                // Corrigido 'Inválido'
+                // Corrigido 'E-mail inválido'
                 'auth/invalid-email': 'E-mail inválido.',
                 'auth/user-not-found': 'Nenhuma conta encontrada com este e-mail.',
                 'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns instantes e tente de novo.',
             };
             setNotification?.({
                 type: 'error',
-                // Corrigido 'Não foi possível' e 'e-mail'
+                // Corrigido 'Não foi possível enviar'
                 message: messages[code] || 'Não foi possível enviar o link. Tente novamente.',
             });
         } finally {
@@ -76,6 +82,7 @@ const PasswordRecovery = ({ onBackToLogin, setNotification }) => {
                             </p>
                         </div>
                         <div className="text-xs text-blue-100/80 space-y-1">
+                            {/* Corrigido 'técnicos' */}
                             <p>Funciona para administradores e técnicos.</p>
                             {/* Corrigido 'não reconheceu' e 'e-mail' */}
                             <p>Se não reconheceu esta solicitação, ignore o e-mail.</p>
@@ -119,7 +126,6 @@ const PasswordRecovery = ({ onBackToLogin, setNotification }) => {
                                 required
                             />
                             <Button type="submit" disabled={isSending} className="w-full">
-                                {/* Corrigido 'redefinição' */}
                                 {isSending ? 'Enviando...' : 'Receber link de redefinição'}
                             </Button>
                         </form>

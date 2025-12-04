@@ -24,6 +24,8 @@ import {
     sendPasswordResetEmail,
     updateProfile,
     updatePassword,
+    verifyPasswordResetCode,
+    confirmPasswordReset,
     reauthenticateWithCredential,
     EmailAuthProvider,
 } from 'firebase/auth';
@@ -97,6 +99,8 @@ export {
     updateProfile,
     setDoc,
     updatePassword, 
+    verifyPasswordResetCode,
+    confirmPasswordReset,
     reauthenticateWithCredential,
     EmailAuthProvider,
     userCollectionRef,
