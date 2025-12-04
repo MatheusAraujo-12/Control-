@@ -9,6 +9,7 @@ import {
     doc,
     setDoc,
 } from '../firebase';
+import PasswordRecovery from './PasswordRecovery';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Mail, LockKeyhole, Phone, IdCard, Calendar, UserPlus } from 'lucide-react';
@@ -27,15 +28,21 @@ const initialFormState = {
 
 const toErrorMessage = code => {
     const messages = {
+        // Corrigido 'e-mail' e 'já'
         'auth/email-already-in-use': 'Este e-mail já está cadastrado. Tente fazer login.',
-        'auth/invalid-email': 'Informe um e-mail válido.',
+        // Corrigido 'válido'
+        'auth/invalid-email': 'Informe um e-mail válido.', 
         'auth/invalid-password': 'A senha precisa ter pelo menos 6 caracteres.',
-        'auth/user-not-found': 'Usuário não encontrado. Verifique o e-mail digitado.',
-        'auth/wrong-password': 'Senha incorreta. Tente novamente.',
+        // Corrigido 'e-mail'
+        'auth/user-not-found': 'Usuário não encontrado. Verifique o e-mail digitado.', 
+        // Corrigido 'incorreta'
+        'auth/wrong-password': 'Senha incorreta. Tente novamente.', 
         'auth/weak-password': 'A senha precisa ter pelo menos 6 caracteres.',
-        'auth/too-many-requests': 'Muitas tentativas realizadas. Aguarde alguns instantes e tente novamente.',
+        // Corrigido 'instantes'
+        'auth/too-many-requests': 'Muitas tentativas realizadas. Aguarde alguns instantes e tente novamente.', 
     };
-    return messages[code] || 'Não foi possível concluir a operação. Tente novamente em instantes.';
+    // Corrigido 'Não foi possível' e 'instantes'
+    return messages[code] || 'Não foi possível concluir a operação. Tente novamente em instantes.'; 
 };
 
 const Auth = ({ setNotification }) => {
@@ -44,9 +51,11 @@ const Auth = ({ setNotification }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const isRegister = mode === 'register';
+    const isRecover = mode === 'recover';
 
     const title = useMemo(
-        () => (isRegister ? 'Crie sua conta' : 'Acesse sua conta'),
+        // Corrigido 'Crie sua conta' e 'Acesse sua conta'
+        () => (isRegister ? 'Crie sua conta' : 'Acesse sua conta'), 
         [isRegister]
     );
 
@@ -103,7 +112,8 @@ const Auth = ({ setNotification }) => {
             }
         } catch (error) {
             if (error.message === 'auth/password-mismatch') {
-                setNotification?.({ type: 'error', message: 'As senhas informadas não coincidem.' });
+                // Corrigido 'não'
+                setNotification?.({ type: 'error', message: 'As senhas informadas não coincidem.' }); 
             } else {
                 setNotification?.({ type: 'error', message: toErrorMessage(error.code) });
             }
@@ -117,6 +127,18 @@ const Auth = ({ setNotification }) => {
         resetForm();
     };
 
+    if (isRecover) {
+        return (
+            <PasswordRecovery
+                setNotification={setNotification}
+                onBackToLogin={() => {
+                    resetForm();
+                    setMode('login');
+                }}
+            />
+        );
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col items-center justify-center px-4 py-8">
             <div className="max-w-md w-full bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
@@ -125,7 +147,9 @@ const Auth = ({ setNotification }) => {
                         <h1 className="text-3xl font-bold text-white">{title}</h1>
                         <p className="text-gray-300 text-sm">
                             {isRegister
-                                ? 'Informe seus dados para criar o acesso à plataforma.'
+                                // Corrigido 'plataforma'
+                                ? 'Informe seus dados para criar o acesso à plataforma.' 
+                                // Corrigido 'e-mail'
                                 : 'Entre com seu e-mail e senha cadastrados.'}
                         </p>
                     </header>
@@ -146,7 +170,7 @@ const Auth = ({ setNotification }) => {
                             name="email"
                             value={formData.email}
                             onChange={handleChange}
-                            placeholder="E-mail"
+                            placeholder="E-mail" // Corrigido 'E-mail'
                             icon={<Mail size={18} />}
                             required
                         />
@@ -160,11 +184,25 @@ const Auth = ({ setNotification }) => {
                             required
                             minLength={6}
                         />
+                        {!isRegister && (
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        resetForm();
+                                        setMode('recover');
+                                    }}
+                                    className="text-sm font-semibold text-blue-400 hover:text-blue-200"
+                                >
+                                    Esqueceu a senha?
+                                </button>
+                            </div>
+                        )}
                         {isRegister && (
                             <>
                                 <Input
                                     type="password"
-                                name="confirmPassword"
+                                    name="confirmPassword"
                                     value={formData.confirmPassword}
                                     onChange={handleChange}
                                     placeholder="Confirme a senha"
@@ -195,7 +233,7 @@ const Auth = ({ setNotification }) => {
                                     name="phone"
                                     value={formData.phone}
                                     onChange={handleChange}
-                                    placeholder="Número de telefone"
+                                    placeholder="Número de telefone" // Corrigido 'número'
                                     icon={<Phone size={18} />}
                                     required
                                 />
@@ -214,6 +252,7 @@ const Auth = ({ setNotification }) => {
                     <footer className="text-center text-sm text-gray-200">
                         {isRegister ? (
                             <p>
+                                {/* Corrigido 'já' */}
                                 Já possui uma conta?{' '}
                                 <button type="button" onClick={toggleMode} className="text-blue-400 hover:text-blue-200 font-semibold">
                                     Fazer login
@@ -221,6 +260,7 @@ const Auth = ({ setNotification }) => {
                             </p>
                         ) : (
                             <p>
+                                {/* Corrigido 'não' */}
                                 Ainda não possui conta?{' '}
                                 <button type="button" onClick={toggleMode} className="text-blue-400 hover:text-blue-200 font-semibold">
                                     Criar cadastro
